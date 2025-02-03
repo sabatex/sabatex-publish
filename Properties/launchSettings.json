@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "sabatex-publish": {
-      "commandName": "Project",
-      "commandLineArgs": "--csprojC:\\Users\\serhi\\.repos\\sabatex\\Sabatex.Extensions\\Sabatex.Core\\Sabatex.Core.csproj"
-    }
-  }
-}
