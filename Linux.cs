@@ -29,9 +29,9 @@ public class Linux
     /// </summary>
     public int Port { get; set; } = 5000;
     /// <summary>
-    /// 
+    /// True - standalone Blazor WASM, false - asp.net core
     /// </summary>
-    public bool FrontEnd { get; set; }
+    public bool FrontEnd { get; set; } = false;
     /// <summary>
     /// Publish folder on linux server
     /// default : /var/www/{ProjectName}
@@ -63,7 +63,7 @@ public class Linux
        TarFileName = $"{projectName}.tar.gz";
        FrontEnd = false ;
        PublishFolder = "/var/www/" + projectName;
-        ServiceName = projectName.ToLower();
+       ServiceName = projectName.ToLower();
     }
 
 
