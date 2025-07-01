@@ -8,17 +8,13 @@ namespace Sabatex.Publish;
 
 public class Linux
 {
- 
+
     /// <summary>
     /// Service name
     /// defaul set as ProjectName
     /// </summary>
     public string ServiceName { get; set; }
 
-    /// <summary>
-    /// read from json
-    /// </summary>
-    public NGINX NGINX { get; set; }=new NGINX();
     /// <summary>
     /// user home folder
     /// The publisher ignore Linux section if null value 
@@ -29,9 +25,9 @@ public class Linux
     /// </summary>
     public int Port { get; set; } = 5000;
     /// <summary>
-    /// True - standalone Blazor WASM, false - asp.net core
+    /// This is a front end project
     /// </summary>
-    public bool FrontEnd { get; set; } = false;
+    public bool FrontEnd { get; set; }
     /// <summary>
     /// Publish folder on linux server
     /// default : /var/www/{ProjectName}
@@ -50,20 +46,29 @@ public class Linux
     /// The Bitvise tlp file path
     /// </summary>
     public string? BitviseTlpFile { get; set; }
-    
+    /// <summary>
+    /// The tar file name as {projectName}.tar.gz
+    /// </summary>
     public string TarFileName { private set; get; }
+
+    /// <summary>
+    /// read from json
+    /// </summary>
+    public NGINX NGINX { get; set; } = new NGINX();
+
+
     //public readonly string TarFilePath;
-    string  projectName;
+    string projectName;
 
 
 
     public Linux(string projectName)
     {
-       this.projectName = projectName;
-       TarFileName = $"{projectName}.tar.gz";
-       FrontEnd = false ;
-       PublishFolder = "/var/www/" + projectName;
-       ServiceName = projectName.ToLower();
+        this.projectName = projectName;
+        TarFileName = $"{projectName}.tar.gz";
+        FrontEnd = false;
+        PublishFolder = "/var/www/" + projectName;
+        ServiceName = projectName.ToLower();
     }
 
 

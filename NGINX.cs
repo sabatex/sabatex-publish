@@ -13,4 +13,6 @@ public class NGINX
     public string[]? HostName { get; set; }
     public string? HostNames => string.Join(",", HostName ?? new string[] { });
 
+    public int AppPort { get; set; } = 5000;
+
 }

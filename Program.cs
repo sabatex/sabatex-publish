@@ -6,9 +6,9 @@ namespace sabatex_publish;
 
 public class Program
 {
-	static string? projFile;
+    static string? projFile;
     static bool migrate = false;
-	static SabatexSettings settings;
+    static SabatexSettings settings;
     static bool updateService = false;
     static bool updateNginx = false;
     static LinuxScriptShell linuxScriptShell => new LinuxScriptShell(settings.TempFolder, settings.Linux.BitviseTlpFile);
@@ -37,12 +37,12 @@ public class Program
             Directory.Delete(settings.TempPublishProjectFolder, true);
         }
         Directory.CreateDirectory(settings.TempPublishProjectFolder);
-        string script = $"dotnet publish {settings.ProjectFolder} --configuration Release  -o {settings.TempPublishProjectFolder}";
+        string script = $"dotnet publish {settings.ProjectFolder}/{settings.ProjectName}.csproj --configuration Release  -o {settings.TempPublishProjectFolder}";
         if (!localScriptShell.Run(script, settings.ProjectFolder))
             throw new Exception("Error build project!");
     }
 
-    static async Task PutStringAsFileAsync(string text, string linuxDestinationPath,string fileName)
+    static async Task PutStringAsFileAsync(string text, string linuxDestinationPath, string fileName)
     {
         await System.IO.File.WriteAllTextAsync($"{settings.TempFolder}/{fileName}", text);
         linuxScriptShell.PutFile(settings.TempFolder, settings.Linux.TempProjectFolder, fileName);
@@ -75,7 +75,7 @@ public class Program
         if (File.Exists(tarFilePath))
             File.Delete(tarFilePath);
 
- 
+
         // pack project
         if (!localScriptShell.Run($"tar -czvf {tarFileName} {projectName}", tempFolder))
             throw new Exception("Error pack !");
@@ -103,26 +103,26 @@ public class Program
         if (string.IsNullOrWhiteSpace(settings.Linux.TempProjectFolder))
             throw new NullReferenceException(nameof(Linux.TempProjectFolder));
         var tempProjectFolder = settings.Linux.TempProjectFolder;
-        var linuxScriptShell = new LinuxScriptShell(settings.TempPublishProjectFolder,settings.Linux.BitviseTlpFile);
+        var linuxScriptShell = new LinuxScriptShell(settings.TempPublishProjectFolder, settings.Linux.BitviseTlpFile);
         // check web folder
         if (!linuxScriptShell.DirectoryExist(publishFolder))
         {
             //
-            if (!linuxScriptShell.Mkdir(publishFolder,true))
+            if (!linuxScriptShell.Mkdir(publishFolder, true))
                 throw new Exception($"Error create folder {publishFolder}");
         }
         else
         {
             // clean webfolder
-            if (!linuxScriptShell.RemoveFolder(publishFolder,true))
+            if (!linuxScriptShell.RemoveFolder(publishFolder, true))
                 Console.WriteLine($"Error clean {publishFolder}");
         }
 
         // move content
-        if (!linuxScriptShell.Move($"{tempProjectFolder}/wwwroot/*",publishFolder))
+        if (!linuxScriptShell.Move($"{tempProjectFolder}/wwwroot/*", publishFolder))
             throw new Exception($"Error move content !");
         // set credential
-        if (!linuxScriptShell.Chown("www-data",publishFolder))
+        if (!linuxScriptShell.Chown("www-data", publishFolder))
         {
             throw new Exception($"Error set www-data:www-data !");
         }
@@ -146,10 +146,10 @@ public class Program
     {
         if (string.IsNullOrWhiteSpace(settings.Linux.ServiceName))
             throw new NullReferenceException(nameof(settings.Linux.ServiceName));
-        
-  
+
+
         var tempServiceFileName = $"{settings.TempFolder}/{settings.Linux.ServiceName}.service";
-        
+
         if (!linuxScriptShell.FileExist($"/etc/systemd/system/{settings.Linux.ServiceName}.service"))
         {
 
@@ -178,7 +178,7 @@ public class Program
             }
         }
 
-      if (!linuxScriptShell.StartService(settings.Linux.ServiceName))
+        if (!linuxScriptShell.StartService(settings.Linux.ServiceName))
             throw new Exception($"Do not start service {settings.Linux.ServiceName}");
 
 
@@ -206,12 +206,12 @@ public class Program
                     throw new Exception("Error create folder /etc/sabatex");
             }
 
-            linuxScriptShell.Move($"{settings.Linux.TempProjectFolder}/{settings.Linux.ServiceName}", $"/etc/sabatex/{settings.Linux.ServiceName}",true);
+            linuxScriptShell.Move($"{settings.Linux.TempProjectFolder}/{settings.Linux.ServiceName}", $"/etc/sabatex/{settings.Linux.ServiceName}", true);
         }
 
 
 
-        if (!linuxScriptShell.DotnetRun(settings.Linux.PublishFolder,$"{settings.ProjectName}.dll","--migrate",true))
+        if (!linuxScriptShell.DotnetRun(settings.Linux.PublishFolder, $"{settings.ProjectName}.dll", "--migrate", true))
         {
             throw new Exception($"Error run project {settings.Linux.PublishFolder}");
         }
@@ -222,7 +222,7 @@ public class Program
     {
         if (!linuxScriptShell.FileExist("/etc/nginx/sites-available/default"))
         {
-            if  (!linuxScriptShell.sexec("sudo apt update"))
+            if (!linuxScriptShell.sexec("sudo apt update"))
                 return await Error("Do not execute sudo apt update");
             if (!linuxScriptShell.sexec("sudo apt install -y nginx"))
                 return await Error("Do not install nginx");
@@ -230,20 +230,20 @@ public class Program
 
         var configFileName = $"/etc/nginx/sites-available/{settings.Linux.ServiceName}";
         var tempConfigFileName = $"{settings.TempFolder}/{settings.Linux.ServiceName}";
-        bool change= false;
+        bool change = false;
         string backup = string.Empty;
         if (!linuxScriptShell.FileExist(configFileName) || !linuxScriptShell.FileExist($"/etc/nginx/sites-enabled/{settings.Linux.ServiceName}"))
         {
             await PutStringAsFileAsync(settings.GetNginxConfig(), "/etc/nginx/sites-available", settings.Linux.ServiceName);
-            if (!linuxScriptShell.CreateSymlink(configFileName, $"/etc/nginx/sites-enabled/{settings.Linux.ServiceName}",true))
+            if (!linuxScriptShell.CreateSymlink(configFileName, $"/etc/nginx/sites-enabled/{settings.Linux.ServiceName}", true))
                 return await Error($"Error create symlink /etc/nginx/sites-enabled/{settings.Linux.ServiceName}");
             change = true;
             // create config file for new site
         }
         if (updateNginx && !change)
         {
-            backup = $"{configFileName}-{DateTime.Now.ToString().Replace(':','-').Replace('.','-').Replace(' ','-')}";
-            if ( !linuxScriptShell.Copy(configFileName,backup,true))
+            backup = $"{configFileName}-{DateTime.Now.ToString().Replace(':', '-').Replace('.', '-').Replace(' ', '-')}";
+            if (!linuxScriptShell.Copy(configFileName, backup, true))
                 return await Error($"Error copy file {configFileName}");
             await PutStringAsFileAsync(settings.GetNginxConfig(), "/etc/nginx/sites-available", settings.Linux.ServiceName);
             change = true;
@@ -266,7 +266,7 @@ public class Program
                 return await Error("Error restart nginx");
         }
 
-   
+
         return true;
     }
 
@@ -294,26 +294,26 @@ public class Program
         if (!linuxScriptShell.DirectoryExist(publishFolder))
         {
             //
-            if (!linuxScriptShell.Mkdir(publishFolder,true))
+            if (!linuxScriptShell.Mkdir(publishFolder, true))
                 throw new Exception($"Error create folder {publishFolder}");
         }
         else
         {
             // backup old version
-            if (!linuxScriptShell.Tar(settings.Linux.TarFileName,publishFolder,true))
+            if (!linuxScriptShell.Tar(settings.Linux.TarFileName, publishFolder, true))
                 Console.WriteLine($"Error create archive {publishFolder}");
-            if (!linuxScriptShell.Move(settings.Linux.TarFileName,$"{settings.Linux.TarFileName}{DateTime.Now.ToString("yyyy-MM-dd")}.tar.gz",true))
+            if (!linuxScriptShell.Move(settings.Linux.TarFileName, $"{settings.Linux.TarFileName}{DateTime.Now.ToString("yyyy-MM-dd")}.tar.gz", true))
                 Console.WriteLine($"Error move {publishFolder}");
             // clean webfolder
-            if (!linuxScriptShell.RemoveFolder($"{publishFolder}/*",true))
+            if (!linuxScriptShell.RemoveFolder($"{publishFolder}/*", true))
                 Console.WriteLine($"Error clean {publishFolder}");
         }
 
         // move content
-        if (!linuxScriptShell.Move($"{tempProjectFolder}/*",publishFolder,true))
+        if (!linuxScriptShell.Move($"{tempProjectFolder}/*", publishFolder, true))
             throw new Exception($"Error move content !");
         // set credential
-        if (!linuxScriptShell.Chown("www-data",publishFolder,true))
+        if (!linuxScriptShell.Chown("www-data", publishFolder, true))
         {
             throw new Exception($"Error set www-data:www-data !");
         }
@@ -323,7 +323,7 @@ public class Program
             await MigrateAsync();
         }
 
-        if (! await UpdateNginx())
+        if (!await UpdateNginx())
             return await Error("Error update nginx");
 
 
@@ -334,7 +334,7 @@ public class Program
 
 
     static void AnalizeArgs(string[] args)
-	{
+    {
         if (args.Any(s => s.ToLower() == "--migrate"))
         {
             migrate = true;
@@ -352,9 +352,9 @@ public class Program
         projFile = args.FirstOrDefault(s => s.ToLower().StartsWith("--csproj"));
         if (projFile != null)
         {
-            projFile = projFile.Replace("--csproj","");
+            projFile = projFile.Replace("--csproj", "");
         }
-        
+
 
 
         if (projFile == null)
@@ -372,62 +372,62 @@ public class Program
             throw new FileNotFoundException("The file not exist: ", projFile);
         }
 
-	}
+    }
 
     static async Task Main(string[] args)
-	{
-		
-		AnalizeArgs(args);
+    {
 
-		try
-		{
+        AnalizeArgs(args);
+
+        try
+        {
             settings = new SabatexSettings(projFile);
-			if (settings.IsLibrary)
-			{
-				string nugetAuthToken = settings.NUGET.GetToken();
+            if (settings.IsLibrary)
+            {
+                string nugetAuthToken = settings.NUGET.GetToken();
                 if (Directory.Exists(settings.OutputPath))
                 {
                     string packagesPath = $"{settings.OutputPath}\\*.nupkg";
                     localScriptShell.Delete(packagesPath);
                 }
-				await PackNugetAsync();
+                await PackNugetAsync();
 
-				string symbols = settings.IsPreRelease ? ".symbols" : string.Empty;
-		
-				if (settings.IsPreRelease)
-				{
-					if (!await localScriptShell.RunAsync($"nuget add \"{settings.OutputPath}\\{settings.ProjectName}.{settings.Version}.symbols.nupkg\" -source {settings.NUGET.GetLocalStorage()}"))
-					{
-						throw new Exception("Error publish to nuget!");
-					}
+                string symbols = settings.IsPreRelease ? ".symbols" : string.Empty;
 
-		}
-		else
-		{
-			if (!await localScriptShell.RunAsync($"dotnet nuget push \"{settings.OutputPath}\\*{symbols}.nupkg\" -k {nugetAuthToken} -s https://api.nuget.org/v3/index.json --skip-duplicate"))
-			{
-				throw new Exception("Error publish to nuget!");
-			}
-		}
-	}
-	else
-	{
-		Build();
-		PutTolinux();
-		if (!settings.Linux.FrontEnd)
-			await UpdateBackendAsync();
-		else
-			UpdateBlazorwasm();
+                if (settings.IsPreRelease)
+                {
+                    if (!await localScriptShell.RunAsync($"nuget add \"{settings.OutputPath}\\{settings.ProjectName}.{settings.Version}.symbols.nupkg\" -source {settings.NUGET.GetLocalStorage()}"))
+                    {
+                        throw new Exception("Error publish to nuget!");
+                    }
 
-	}
-	Console.WriteLine("Done!");
+                }
+                else
+                {
+                    if (!await localScriptShell.RunAsync($"dotnet nuget push \"{settings.OutputPath}\\*{symbols}.nupkg\" -k {nugetAuthToken} -s https://api.nuget.org/v3/index.json --skip-duplicate"))
+                    {
+                        throw new Exception("Error publish to nuget!");
+                    }
+                }
+            }
+            else
+            {
+                Build();
+                PutTolinux();
+                if (!settings.Linux.FrontEnd)
+                    await UpdateBackendAsync();
+                else
+                    UpdateBlazorwasm();
+
+            }
+            Console.WriteLine("Done!");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+            Environment.Exit(1);
+        }
+
+
+    }
 }
-catch (Exception ex)
-{
-	Console.WriteLine(ex.Message);
-	Environment.Exit(1);
-}
-
-
-	}
-	}

@@ -12,7 +12,7 @@ public class ScriptShell
     //protected readonly SabatexSettings Settings;
     private readonly string workingDirectory;
 
-	public ScriptShell(string workingDirectory)
+    public ScriptShell(string workingDirectory)
     {
         //this.Settings = settings;
         this.workingDirectory = workingDirectory;
@@ -39,11 +39,11 @@ public class ScriptShell
         proc.Start();
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
-        proc.WaitForExit(); 
+        proc.WaitForExit();
         return proc.ExitCode == 0 || proc.ExitCode == 1000;
     }
-	public async Task<bool> RunAsync(string script, string? workingDirectory = null)
-	{
+    public async Task<bool> RunAsync(string script, string? workingDirectory = null)
+    {
         var processInfo = new ProcessStartInfo
         {
             FileName = "cmd.exe",
@@ -75,5 +75,5 @@ public class ScriptShell
                 return false;
             }
         }
-	}
+    }
 }

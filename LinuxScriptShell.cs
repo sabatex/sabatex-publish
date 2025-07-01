@@ -7,10 +7,10 @@ using System.Threading.Tasks;
 
 namespace sabatex_publish;
 
-public class LinuxScriptShell:ScriptShell
+public class LinuxScriptShell : ScriptShell
 {
     readonly string bitviseTlpFile;
-    public LinuxScriptShell(string workingDirectory,string? bitviseTlpFile) :base(workingDirectory)
+    public LinuxScriptShell(string workingDirectory, string? bitviseTlpFile) : base(workingDirectory)
     {
         if (string.IsNullOrWhiteSpace(bitviseTlpFile))
             throw new NullReferenceException(nameof(bitviseTlpFile));
@@ -22,7 +22,7 @@ public class LinuxScriptShell:ScriptShell
     {
         if (string.IsNullOrWhiteSpace(script))
             throw new ArgumentNullException(nameof(script));
-         return Run($"sexec -profile=\"{bitviseTlpFile}\" -cmd=\"{script}\"");
+        return Run($"sexec -profile=\"{bitviseTlpFile}\" -cmd=\"{script}\"");
     }
     public async Task<bool> sexecAsync(string script)
     {
@@ -50,12 +50,12 @@ public class LinuxScriptShell:ScriptShell
         return await sexecAsync($"test -f {path}");
     }
     public bool DirectoryExist(string? path) => sexec($"test -d '{path}'");
-    public bool Mkdir(string? path,bool sudoes = false) => sexec($"{SudoText(sudoes)}mkdir {path}");
-    public bool RemoveFolder(string? path,bool sudoes = false) => sexec($"{SudoText(sudoes)}rm {path} -r");
+    public bool Mkdir(string? path, bool sudoes = false) => sexec($"{SudoText(sudoes)}mkdir {path}");
+    public bool RemoveFolder(string? path, bool sudoes = false) => sexec($"{SudoText(sudoes)}rm {path} -r");
     public async Task<bool> RemoveFolderAsync(string? path, bool sudoes = false) => await sexecAsync($"{SudoText(sudoes)}rm {path} -r");
-    public async Task<bool> RemoveFileAsync(string? path, bool sudoes =false) => await sexecAsync($"{SudoText(sudoes)}rm {path}");
+    public async Task<bool> RemoveFileAsync(string? path, bool sudoes = false) => await sexecAsync($"{SudoText(sudoes)}rm {path}");
 
-    public bool Move(string source, string destination,bool sudoes=false) => sexec($"{SudoText(sudoes)}mv {source} {destination}");
+    public bool Move(string source, string destination, bool sudoes = false) => sexec($"{SudoText(sudoes)}mv {source} {destination}");
 
     public bool Copy(string source, string destination, bool sudoes = false) => sexec($"{SudoText(sudoes)}cp {source} {destination}");
 
@@ -73,13 +73,13 @@ public class LinuxScriptShell:ScriptShell
             throw new Exception("Error put folder !");
     }
 
-    public void UnPack(string linuxTempFolder,string tarFileName)
+    public void UnPack(string linuxTempFolder, string tarFileName)
     {
         if (!sexec($"cd {linuxTempFolder}; tar -xzvf {tarFileName}"))
             throw new Exception("Error unpack file!");
     }
 
-    public bool Tar(string tarFileName, string folderName,bool sudoes=false) => sexec($"{SudoText(sudoes)}tar -czvf {tarFileName} {folderName}");
+    public bool Tar(string tarFileName, string folderName, bool sudoes = false) => sexec($"{SudoText(sudoes)}tar -czvf {tarFileName} {folderName}");
     public bool EnableService(string serviceName) => sexec($"sudo systemctl enable {serviceName}");
     public bool DisableService(string serviceName) => sexec($"sudo systemctl disable {serviceName}");
 
@@ -91,11 +91,11 @@ public class LinuxScriptShell:ScriptShell
     public bool RestartService(string serviceName) => sexec($"sudo systemctl restart {serviceName}");
     public bool StatusService(string serviceName) => sexec($"sudo systemctl status {serviceName}");
     public bool DaemonReload() => sexec($"sudo systemctl daemon-reload");
-    public bool CreateSymlink(string source, string destination,bool sudoes=false) => sexec($"{SudoText(sudoes)}ln -s {source} {destination}");
+    public bool CreateSymlink(string source, string destination, bool sudoes = false) => sexec($"{SudoText(sudoes)}ln -s {source} {destination}");
     public bool RemoveSymlink(string source) => sexec($"rm {source}");
     public bool NginxTestConfig() => sexec($"sudo nginx -t");
     public bool NginxReload() => sexec($"sudo nginx -s reload");
 
-    public bool DotnetRun(string path,string programm,string args,bool sudoes=false) => sexec($"cd {path};{SudoText(sudoes)}dotnet {programm} {args}");
+    public bool DotnetRun(string path, string programm, string args, bool sudoes = false) => sexec($"cd {path};{SudoText(sudoes)}dotnet {programm} {args}");
 
 }
