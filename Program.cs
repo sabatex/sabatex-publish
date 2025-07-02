@@ -1,5 +1,6 @@
 ﻿using Sabatex.Publish;
 using sabatex_publish;
+using System.CommandLine;
 using System.Reflection.Metadata;
 
 namespace sabatex_publish;
@@ -237,6 +238,9 @@ public class Program
             await PutStringAsFileAsync(settings.GetNginxConfig(), "/etc/nginx/sites-available", settings.Linux.ServiceName);
             if (!linuxScriptShell.CreateSymlink(configFileName, $"/etc/nginx/sites-enabled/{settings.Linux.ServiceName}", true))
                 return await Error($"Error create symlink /etc/nginx/sites-enabled/{settings.Linux.ServiceName}");
+            if ( !linuxScriptShell.CreateSSLCertificate(settings.ProjectName,settings.Linux.NGINX.HostNames,"192.168.1.1"))
+                return await Error($"Error create SSL certificate for {settings.Linux.ServiceName}");
+
             change = true;
             // create config file for new site
         }
@@ -279,10 +283,6 @@ public class Program
         var tempProjectFolder = settings.Linux.TempProjectFolder;
         if (settings.Linux.FrontEnd)
             throw new Exception("Try update backend for frontend project");
-
-
-
-        Console.WriteLine($"Stop linux service {serviceName}");
 
         // stop service and create service file if not exist
         StopService();
@@ -333,8 +333,74 @@ public class Program
     }
 
 
+    static RootCommand InitialCMD()
+    {
+        Option<bool>  migrateOption = new("--migrate",new string[]{"-m"})
+        {
+            Description = "The migrate database after publish project."
+        };
+
+        Option<bool> updateServiceOption = new("--updateservice", new string[] { "-s" })
+        {
+            Description = "Update service file on linux server."
+        };
+
+        Option<bool> updateNginxOption = new("--updatenginx", new string[] { "-n" })
+        {
+            Description = "Update nginx config on linux server."
+        };
+        
+        Option<string> projFileOption = new("--csproj", new string[] { "-p" })
+        {
+            Description = "The csproj file path. If not set, the program search *.csproj in current directory."
+        };
+        RootCommand rootCommand = new("Sabatex publish tool")
+        {
+            migrateOption,
+            updateServiceOption,
+            updateNginxOption,
+            projFileOption
+        };
+        rootCommand.SetAction(parseResult =>
+        {
+            migrate = parseResult.GetValue<bool>("--migrate");
+            updateService = parseResult.GetValue<bool>("--updateservice");
+            updateNginx = parseResult.GetValue<bool>("--updatenginx");
+            projFile = parseResult.GetValue<string>("--csproj");
+
+        });
+        return rootCommand;
+    }
+
+
     static void AnalizeArgs(string[] args)
     {
+        var rootCommand = InitialCMD();
+        rootCommand.SetAction(parseResult =>
+        { 
+            migrate = parseResult.GetValue<bool>("--migrate");
+            updateService = parseResult.GetValue<bool>("--updateservice");
+            updateNginx = parseResult.GetValue<bool>("--updatenginx");
+            projFile = parseResult.GetValue<string>("--csproj");
+
+        });
+
+        var parseResult = rootCommand.Parse(args);
+
+
+        if (parseResult.Errors.Count > 0)
+        {
+            Console.WriteLine("Error parse arguments:");
+            foreach (var error in parseResult.Errors)
+            {
+                Console.WriteLine(error.Message);
+            }
+            Environment.Exit(1);
+        }
+
+
+
+
         if (args.Any(s => s.ToLower() == "--migrate"))
         {
             migrate = true;
@@ -376,8 +442,30 @@ public class Program
 
     static async Task Main(string[] args)
     {
+        var rootCommand = InitialCMD();
+        rootCommand.Parse(args).Invoke();
 
-        AnalizeArgs(args);
+        if (projFile == null)
+        {
+            var files = Directory.GetFiles(Directory.GetCurrentDirectory(), "*.csproj");
+            if (files.Length == 0)
+            {
+                Console.WriteLine("The Current directory must contains  *.csproj file");
+                Environment.Exit(1);
+             }
+            if (files.Length > 1)
+            {
+                Console.WriteLine("The Current directory must contains only one *.csproj file");
+                Environment.Exit(1);
+             }
+            projFile = files[0];
+        }
+
+        if (!File.Exists(projFile))
+        {
+            Console.WriteLine("The file not exist: " + projFile);
+            Environment.Exit(1);
+        }
 
         try
         {

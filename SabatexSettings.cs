@@ -48,19 +48,14 @@ public class SabatexSettings : AppConfig
     public string BuildConfiguration { get; private set; }
 
 
-    public Linux Linux { get; private set; }
+    public Linux? Linux { get; set; }
 
-    public NUGET NUGET { get; private set; } = new NUGET();
+    public NUGET? NUGET { get; set; }
 
 
     public bool IsLibrary { get; private set; }
-    public SabatexSettings(string projectFile/*, bool setup=false*/)
+    public SabatexSettings(string projectFile)
     {
-        if (!File.Exists(projectFile))
-        {
-            throw new FileNotFoundException("The file not exist: ", projectFile);
-        }
-
         if (Path.GetExtension(projectFile) != ".csproj")
         {
             throw new Exception($"The file:{projectFile} must be extensions *.csproj!");
@@ -199,6 +194,8 @@ public class SabatexSettings : AppConfig
         yield return "    ssl_session_tickets       off;";
         yield return "    ssl_stapling              on;";
         yield return "    ssl_stapling_verify       on;";
+        yield return $"    ssl_certificate           /etc/ssl/certs/{ProjectName}.crt";
+        yield return $"    ssl_certificate_key       /etc/ssl/private/{ProjectName}.key";
         yield return "";
         yield return "    add_header Strict-Transport-Security \"max-age=63072000; includeSubdomains; preload\";";
         yield return "    add_header X-Frame-Options           DENY;";

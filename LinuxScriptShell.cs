@@ -96,6 +96,9 @@ public class LinuxScriptShell : ScriptShell
     public bool NginxTestConfig() => sexec($"sudo nginx -t");
     public bool NginxReload() => sexec($"sudo nginx -s reload");
 
+    public bool CreateSSLCertificate(string certName,string domainName, string hostIp)=>sexec($"sudo openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes   -keyout /etc/ssl/private/{certName}.key -out /etc/ssl/certs/{certName}.crt  -subj \"/CN={domainName}\"  -addext \"subjectAltName=DNS:{domainName},DNS:www.{domainName},IP:{hostIp}\"");
+
+
     public bool DotnetRun(string path, string programm, string args, bool sudoes = false) => sexec($"cd {path};{SudoText(sudoes)}dotnet {programm} {args}");
 
 }

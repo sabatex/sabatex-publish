@@ -2,7 +2,7 @@
   "profiles": {
     "sabatex-publish": {
       "commandName": "Project",
-      "commandLineArgs": "--csprojC:\\Users\\serhi\\source\\repos\\sabatex-ZNC\\ZNC.Site\\ZNCSite\\ZNCSite.csproj"
+      "commandLineArgs": "-p \"D:\\repos\\BuhExpert\\TG\\TG\\Server\\TG.Server.csproj\" -m"
     }
   }
 }
