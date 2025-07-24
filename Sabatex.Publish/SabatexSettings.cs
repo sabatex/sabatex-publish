@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿// filename: SabatexSettings.cs
+using Microsoft.Extensions.Configuration;
 using sabatex_publish;
 using System;
 using System.Collections.Generic;
@@ -12,8 +13,14 @@ namespace Sabatex.Publish;
 public class SabatexSettings : AppConfig
 {
     const string configFileName = "appsettings.json";
-    readonly string _projectFilePath;
-    readonly string _version;
+    //readonly string _projectFilePath;
+    string _version;
+
+    public string? ProjFile { get; set; }
+    public bool UpdateNginx { get; set; } = false;
+    public bool UpdateService { get; set; } = false;
+    public bool Migrate { get; set; } = false;
+
 
     #region bindable from appsetings.json
     /// <summary>
@@ -26,15 +33,15 @@ public class SabatexSettings : AppConfig
     /// <summary>
     /// The project name set as csproj file name
     /// </summary>
-    public string ProjectName => Path.GetFileNameWithoutExtension(_projectFilePath);
+    public string ProjectName => Path.GetFileNameWithoutExtension(ProjFile ?? throw new Exception("The ProjFile is null"));
     public string ProjectFolder
     {
         get
         {
-            var result = Path.GetDirectoryName(_projectFilePath) ?? string.Empty;
+            var result = Path.GetDirectoryName(ProjFile ?? throw new Exception("The ProjFile is null")) ?? string.Empty;
             if (result == string.Empty)
             {
-                throw new Exception($"Error get folder path from: {_projectFilePath}");
+                throw new Exception($"Error get folder path from: {ProjFile}");
             }
             return result;
         }
@@ -54,36 +61,63 @@ public class SabatexSettings : AppConfig
 
 
     public bool IsLibrary { get; private set; }
-    public SabatexSettings(string projectFile)
+    
+    public SabatexSettings()
     {
-        if (Path.GetExtension(projectFile) != ".csproj")
+    }
+
+    public int ResolveConfig()
+    {
+        if (ProjFile == null)
         {
-            throw new Exception($"The file:{projectFile} must be extensions *.csproj!");
+            var files = Directory.GetFiles(Directory.GetCurrentDirectory(), "*.csproj");
+            if (files.Length == 0)
+            {
+                Logger.Error("The Current directory must contains  *.csproj file");
+                return 2;
+            }
+            if (files.Length > 1)
+            {
+                Logger.Error("The Current directory must contains only one *.csproj file");
+                return 3;
+            }
+            ProjFile = files[0];
         }
 
-        _projectFilePath = projectFile;
+
+        if (!File.Exists(ProjFile))
+        {
+            Logger.Error("The file not exist: " + ProjFile);
+            return 4;
+        }
+
+        if (Path.GetExtension(ProjFile) != ".csproj")
+        {
+            Logger.Error($"The file:{ProjFile} must be extensions *.csproj!");
+            return 5;
+        }
 
         // read csproj data
         var xml = new System.Xml.XmlDocument();
-        xml.Load(projectFile);
-        var version = xml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
-        if (version == null)
+        xml.Load(ProjFile);
+        _version = xml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
+        if (_version == null)
         {
-            throw new Exception($"The project file {projectFile} do not include section <PropertyGroup/Version>");
+            Logger.Error($"The project file {ProjFile} do not include section <PropertyGroup/Version>");
+            return 6;
         }
-
-        _version = version;
-        var ver = new Version(version);
+        
+        var ver = new Version(_version);
         IsPreRelease = ver.IsPreRelease;
         BuildConfiguration = IsPreRelease ? "Debug" : "Release";
-        OutputPath = ProjectFolder + "\\bin\\" + BuildConfiguration;
-
+        OutputPath = $"{Path.GetTempPath()}sabatex\\{ProjectName}\\bin\\{BuildConfiguration}";
+  
         var sdk = xml.SelectSingleNode("Project")?.Attributes?.GetNamedItem("Sdk")?.Value;
         if (sdk == null)
         {
-            throw new Exception($"Do not read SDK type from project");
+            Logger.Error($"Do not read SDK type from project");
+            return 7;
         }
-
         switch (sdk)
         {
             case "Microsoft.NET.Sdk.Web":
@@ -94,10 +128,11 @@ public class SabatexSettings : AppConfig
                 if (library == null || library.ToLower() != "exe")
                     IsLibrary = true;
                 break;
-            default: throw new Exception($"Uknown SDK type");
+            default:
+                Logger.Error($"Uknown SDK type");
+                return 8;
 
         }
-
         var userSecretId = xml.SelectSingleNode("Project/PropertyGroup/UserSecretsId")?.InnerText;
 
 
@@ -118,9 +153,15 @@ public class SabatexSettings : AppConfig
         var sabatexSection = conf.GetSection("SabatexSettings");
         if (sabatexSection == null)
         {
-            throw new Exception("The file appsetting.json d'nt contains section Sabatex!!! ");
+            Logger.Error("The file appsetting.json d'nt contains section Sabatex!!! ");
+            return 9;
         }
         sabatexSection.Bind(this);
+
+        if (NUGET == null)
+        {
+            NUGET = new NUGET();
+        }
 
         if (TempFolder == null)
         {
@@ -139,6 +180,7 @@ public class SabatexSettings : AppConfig
             Directory.CreateDirectory(TempPublishProjectFolder);
         }
 
+        return 0;
     }
 
     public IEnumerable<string> GetServiceConfig()

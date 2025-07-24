@@ -1,4 +1,5 @@
-﻿using System;
+﻿using sabatex_publish;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,7 +15,10 @@ public class NUGET
     public string GetToken()
     {
         if (NugetAuthTokenPath == null)
-            throw new Exception("The parameter 'NUGET::NugetAuthTokenPath'  must be defined in file SabatexSettings.json");
+        {
+            NugetAuthTokenPath = GlobalConfigManager.Get<string>("NugetAuthTokenPath") ?? throw new Exception("The parameter 'NugetAuthTokenPath'  must be defined in file SabatexSettings.json");
+        }
+            
 
         string[] token = File.ReadAllLines(NugetAuthTokenPath);
         if (token.Length == 0 || token.Length > 1)
@@ -26,8 +30,9 @@ public class NUGET
     public string GetLocalStorage()
     {
         if (LocalDebugStorage == null)
-            throw new Exception("The parameter 'LocalDebugStorage'  must be defined in file SabatexSettings.json");
+        {
+            LocalDebugStorage = GlobalConfigManager.Get<string>("LocalDebugStorage") ?? throw new Exception("The parameter 'LocalDebugStorage'  must be defined in file SabatexSettings.json");
+        }
         return LocalDebugStorage;
-
     }
 }

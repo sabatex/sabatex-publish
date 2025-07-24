@@ -1,4 +1,5 @@
-﻿using Sabatex.Publish;
+﻿using Microsoft.Extensions.Configuration;
+using Sabatex.Publish;
 using sabatex_publish;
 using System.CommandLine;
 using System.Reflection.Metadata;
@@ -7,18 +8,16 @@ namespace sabatex_publish;
 
 public class Program
 {
-    static string? projFile;
-    static bool migrate = false;
+
     static SabatexSettings settings;
-    static bool updateService = false;
-    static bool updateNginx = false;
+
     static LinuxScriptShell linuxScriptShell => new LinuxScriptShell(settings.TempFolder, settings.Linux.BitviseTlpFile);
     static LocalScriptShell localScriptShell => new LocalScriptShell(settings.TempPublishProjectFolder);
 
     static async Task PackNugetAsync()
     {
         string includeSource = settings.IsPreRelease ? "--include-source" : string.Empty;
-        string script = $"dotnet pack --configuration {settings.BuildConfiguration} {includeSource} \"{settings.ProjectFolder}/{settings.ProjectName}.csproj\"";
+        string script = $"dotnet pack --configuration {settings.BuildConfiguration} {includeSource} --output \"{settings.OutputPath}\" \"{settings.ProjFile}\" ";
         if (!await localScriptShell.RunAsync(script))
             throw new Exception("Error build project!");
 
@@ -166,7 +165,7 @@ public class Program
         }
         else
         {
-            if (updateService)
+            if (settings.UpdateService)
             {
                 var text = settings.GetServiceConfig();
                 await File.WriteAllLinesAsync(tempServiceFileName, text);
@@ -244,7 +243,7 @@ public class Program
             change = true;
             // create config file for new site
         }
-        if (updateNginx && !change)
+        if (settings.UpdateNginx && !change)
         {
             backup = $"{configFileName}-{DateTime.Now.ToString().Replace(':', '-').Replace('.', '-').Replace(' ', '-')}";
             if (!linuxScriptShell.Copy(configFileName, backup, true))
@@ -318,7 +317,7 @@ public class Program
             throw new Exception($"Error set www-data:www-data !");
         }
 
-        if (migrate)
+        if (settings.Migrate)
         {
             await MigrateAsync();
         }
@@ -333,143 +332,47 @@ public class Program
     }
 
 
-    static RootCommand InitialCMD()
+    static IConfiguration BuildConfiguration()
     {
-        Option<bool>  migrateOption = new("--migrate",new string[]{"-m"})
-        {
-            Description = "The migrate database after publish project."
-        };
+        var builder = new ConfigurationBuilder()
+            // 1️⃣ Локальний у папці проекту
+            .AddJsonFile("sabatex-publish.json", optional: true, reloadOnChange: true)
+            // 2️⃣ Локальний поруч із утилітою
+            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "sabatex-publish.json"),
+                         optional: true, reloadOnChange: true);
 
-        Option<bool> updateServiceOption = new("--updateservice", new string[] { "-s" })
-        {
-            Description = "Update service file on linux server."
-        };
+        // 3️⃣ Глобальний у OneDrive\.sabatex
+        var oneDrive = Environment.GetFolderPath(Environment.SpecialFolder.Personal)
+                    .Replace("Documents", "OneDrive");
+        var globalPath = Path.Combine(oneDrive, ".sabatex", "sabatex-publish.json");
+        builder.AddJsonFile(globalPath, optional: true, reloadOnChange: true);
 
-        Option<bool> updateNginxOption = new("--updatenginx", new string[] { "-n" })
-        {
-            Description = "Update nginx config on linux server."
-        };
-        
-        Option<string> projFileOption = new("--csproj", new string[] { "-p" })
-        {
-            Description = "The csproj file path. If not set, the program search *.csproj in current directory."
-        };
-        RootCommand rootCommand = new("Sabatex publish tool")
-        {
-            migrateOption,
-            updateServiceOption,
-            updateNginxOption,
-            projFileOption
-        };
-        rootCommand.SetAction(parseResult =>
-        {
-            migrate = parseResult.GetValue<bool>("--migrate");
-            updateService = parseResult.GetValue<bool>("--updateservice");
-            updateNginx = parseResult.GetValue<bool>("--updatenginx");
-            projFile = parseResult.GetValue<string>("--csproj");
-
-        });
-        return rootCommand;
+        return builder.Build();
     }
-
-
-    static void AnalizeArgs(string[] args)
+    static async Task<int> Main(string[] args)
     {
-        var rootCommand = InitialCMD();
-        rootCommand.SetAction(parseResult =>
-        { 
-            migrate = parseResult.GetValue<bool>("--migrate");
-            updateService = parseResult.GetValue<bool>("--updateservice");
-            updateNginx = parseResult.GetValue<bool>("--updatenginx");
-            projFile = parseResult.GetValue<string>("--csproj");
-
-        });
-
-        var parseResult = rootCommand.Parse(args);
-
-
-        if (parseResult.Errors.Count > 0)
+        settings = new SabatexSettings();
+        var result = await CommandProcessor.Process(args, settings);
+        if (result.shouldExit)
         {
-            Console.WriteLine("Error parse arguments:");
-            foreach (var error in parseResult.Errors)
-            {
-                Console.WriteLine(error.Message);
-            }
-            Environment.Exit(1);
+            return result.exitCode;
         }
 
+ 
 
-
-
-        if (args.Any(s => s.ToLower() == "--migrate"))
+        if (!File.Exists(settings.ProjFile))
         {
-            migrate = true;
-        }
-        if (args.Any(s => s.ToLower() == "--updateservice"))
-        {
-            updateService = true;
-        }
-        if (args.Any(s => s.ToLower() == "--updatenginx"))
-        {
-            updateNginx = true;
-        }
-
-
-        projFile = args.FirstOrDefault(s => s.ToLower().StartsWith("--csproj"));
-        if (projFile != null)
-        {
-            projFile = projFile.Replace("--csproj", "");
-        }
-
-
-
-        if (projFile == null)
-        {
-            var files = Directory.GetFiles(Directory.GetCurrentDirectory(), "*.csproj");
-            if (files.Length == 0)
-                throw new Exception("The Current directory must contains  *.csproj file");
-            if (files.Length > 1)
-                throw new Exception("The Current directory must contains only one *.csproj file");
-            projFile = files[0];
-        }
-
-        if (!File.Exists(projFile))
-        {
-            throw new FileNotFoundException("The file not exist: ", projFile);
-        }
-
-    }
-
-    static async Task Main(string[] args)
-    {
-        var rootCommand = InitialCMD();
-        rootCommand.Parse(args).Invoke();
-
-        if (projFile == null)
-        {
-            var files = Directory.GetFiles(Directory.GetCurrentDirectory(), "*.csproj");
-            if (files.Length == 0)
-            {
-                Console.WriteLine("The Current directory must contains  *.csproj file");
-                Environment.Exit(1);
-             }
-            if (files.Length > 1)
-            {
-                Console.WriteLine("The Current directory must contains only one *.csproj file");
-                Environment.Exit(1);
-             }
-            projFile = files[0];
-        }
-
-        if (!File.Exists(projFile))
-        {
-            Console.WriteLine("The file not exist: " + projFile);
+            Console.WriteLine("The file not exist: " + settings.ProjFile);
             Environment.Exit(1);
         }
 
         try
         {
-            settings = new SabatexSettings(projFile);
+            var errorCode = settings.ResolveConfig();
+            if (errorCode != 0)
+            {
+                return errorCode;
+            }
             if (settings.IsLibrary)
             {
                 string nugetAuthToken = settings.NUGET.GetToken();
@@ -516,6 +419,6 @@ public class Program
             Environment.Exit(1);
         }
 
-
+        return 0;
     }
 }
