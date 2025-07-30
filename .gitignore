@@ -4,3 +4,4 @@ obj/
 *.csproj.user
 /.vscode
 /Properties/PublishProfiles
+/Sabatex.Publish/Properties/PublishProfiles/FolderProfile.pubxml.user
