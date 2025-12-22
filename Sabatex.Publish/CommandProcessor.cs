@@ -1,4 +1,4 @@
-﻿// file : CommandProcessor.cs
+// file : CommandProcessor.cs
 using Sabatex.Publish;
 using System;
 using System.Collections.Generic;
@@ -6,14 +6,11 @@ using System.CommandLine;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+
 namespace sabatex_publish;
 
 public static class CommandProcessor
 {
-
-
-
-
     static RootCommand InitialCMD()
     {
         Option<bool> migrateOption = new("--migrate", new string[] { "-m" })
@@ -33,47 +30,57 @@ public static class CommandProcessor
 
         Option<string> projFileOption = new("--csproj", new string[] { "-p" })
         {
-            Description = "The csproj file path. If not set, the program search *.csproj in current directory."
+            Description = "The csproj file path. If not set, the program will auto-detect mode (batch or single)."
         };
- 
-        var cmdSet = new Command("set",  "Set global values")
-        {
-            new Option<string>("--NuGetDebugPackagePath","-p")
-            {
-                Description = "Шлях до NuGet DebugPackagePath, наприклад: /home/user/.nuget/packages/sabatex.publish/1.0.0/debug"
-            },
-            new Option<string>("--NuGetKeyPath","-k")
-            {
-                Description = "The path to NUGET Key , наприклад: /home/user/.NUGETKEY"
-            },
 
-            // опція: глобально чи локально
+        var cmdSet = new Command("set", "Set global values")
+        {
+            new Option<string>("--NuGetDebugPackagePath", "-p")
+            {
+                Description = "Path to NuGet DebugPackagePath, example: /home/user/.nuget/packages/sabatex.publish/1.0.0/debug"
+            },
+            new Option<string>("--NuGetKeyPath", "-k")
+            {
+                Description = "The path to NUGET Key, example: /home/user/.NUGETKEY"
+            },
             new Option<bool>("--shared", "-s")
             {
-                Description = "Записати глобально (OneDrive)"
+                Description = "Save globally (OneDrive)"
             }
         };
 
         cmdSet.Action = new SetAction();
-        //a   SetAction(typeof(SetAction)) parseResult =>GlobalConfigManager.SetValue(parseResult.GetValue<string>("--NuGetDebugPackagePath"),
-        //                                                            parseResult.GetValue<string>("--NuGetKeyPath"),
-        //                                                            parseResult.GetValue<bool>("--shared")));
-        RootCommand rootCommand = new("Sabatex publish tool")
+
+        // NEW COMMAND: init-batch
+        var cmdInitBatch = new Command("init-batch", "Create sample batch publishing configuration file")
+        {
+            new Option<string>("--output", new string[] { "-o" })
+            {
+                Description = "Output path for configuration file (default: sabatex-publish-solution.json)"
+            }
+        };
+
+        cmdInitBatch.SetAction(parseResult =>
+        {
+            var outputPath = parseResult.GetValue<string>("--output");
+            BatchPublisher.CreateSampleConfig(outputPath);
+        });
+
+        RootCommand rootCommand = new("Sabatex publish tool - automatic publishing for .NET projects")
         {
             migrateOption,
             updateServiceOption,
             updateNginxOption,
             projFileOption,
-            cmdSet
+            cmdSet,
+            cmdInitBatch  // add new command
         };
 
         return rootCommand;
     }
 
-
     public static async Task<(int exitCode, bool shouldExit)> Process(string[] args, SabatexSettings settings)
     {
-        var help = false;
         var rootCommand = InitialCMD();
 
         rootCommand.SetAction(parseResult =>
@@ -82,11 +89,8 @@ public static class CommandProcessor
             settings.UpdateService = parseResult.GetValue<bool>("--updateservice");
             settings.UpdateNginx = parseResult.GetValue<bool>("--updatenginx");
             settings.ProjFile = parseResult.GetValue<string>("--csproj");
-            help = parseResult.GetValue<bool>("--help");
-            
         });
 
-       
         var parseResult = rootCommand.Parse(args);
 
         if (parseResult.Errors.Count > 0)
@@ -101,32 +105,62 @@ public static class CommandProcessor
 
         await parseResult.InvokeAsync();
 
-        if (parseResult.Action.GetType() == typeof(System.CommandLine.Help.HelpAction) || parseResult.Action.GetType() == typeof(SetAction))
+        // check if special command was invoked (help, set, init-batch)
+        var actionType = parseResult.Action.GetType();
+        if (actionType == typeof(System.CommandLine.Help.HelpAction) || 
+            actionType == typeof(SetAction) ||
+            parseResult.CommandResult.Command.Name == "init-batch")
         {
             return (exitCode: 0, shouldExit: true);
         }
-        
-        
+
+        // NEW LOGIC: automatic mode detection
         if (settings.ProjFile == null)
         {
-            var files = Directory.GetFiles(Directory.GetCurrentDirectory(), "*.csproj");
-            if (files.Length == 0)
+            // use ProjectDetector for smart mode detection
+            var detection = ProjectDetector.Detect();
+
+            if (!detection.IsSuccess)
             {
-                Logger.Error("The Current directory must contains  *.csproj file");
+                // detection error - print recommendations
+                ProjectDetector.PrintDetectionResult(detection);
                 return (exitCode: 2, shouldExit: true);
             }
-            if (files.Length > 1)
+
+            if (detection.Mode == ProjectDetector.DetectionMode.Batch)
             {
-                Logger.Error("The Current directory must contains only one *.csproj file");
-                return (exitCode: 3, shouldExit: true);
+                // found batch configuration - start batch publishing
+                Logger.Info("Starting batch publishing mode...");
+                Console.WriteLine();
+
+                var exitCode = await BatchPublisher.PublishAllAsync(
+                    detection.BatchConfigPath,
+                    settings.Migrate,
+                    settings.UpdateService,
+                    settings.UpdateNginx);
+
+                return (exitCode: exitCode, shouldExit: true);
             }
-            settings.ProjFile = files[0];
+            else if (detection.Mode == ProjectDetector.DetectionMode.Single)
+            {
+                // found one project - use it
+                settings.ProjFile = detection.ProjectPath;
+                Logger.Info($"Auto-detected single project: {Path.GetFileName(settings.ProjFile)}");
+            }
+        }
+        else
+        {
+            // explicitly specified --csproj, check existence
+            if (!File.Exists(settings.ProjFile))
+            {
+                Logger.Error($"Specified project file not found: {settings.ProjFile}");
+                return (exitCode: 4, shouldExit: true);
+            }
+            Logger.Info($"Using specified project: {Path.GetFileName(settings.ProjFile)}");
         }
 
-
-        return (exitCode: 0,shouldExit:false);
-
+        // continue with single-project mode
+        return (exitCode: 0, shouldExit: false);
     }
-
 }
 

@@ -1,4 +1,4 @@
-# Sabatex.Tools (The command line project publish helper)
+﻿# Sabatex.Tools (The command line project publish helper)
 - NUGET Packets (Automatic publishing of debug versions to the local repository and release of versions to the NUGET repository. )
 
 - ASP.NET Core project publish to linux server with NGINX.

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Sabatex.Publish;
 using sabatex_publish;
 using System.CommandLine;
@@ -8,7 +8,6 @@ namespace sabatex_publish;
 
 public class Program
 {
-
     static SabatexSettings settings;
 
     static LinuxScriptShell linuxScriptShell => new LinuxScriptShell(settings.TempFolder, settings.Linux.BitviseTlpFile);
@@ -20,7 +19,6 @@ public class Program
         string script = $"dotnet pack --configuration {settings.BuildConfiguration} {includeSource} --output \"{settings.OutputPath}\" \"{settings.ProjFile}\" ";
         if (!await localScriptShell.RunAsync(script))
             throw new Exception("Error build project!");
-
     }
 
     static async Task<bool> Error(string message)
@@ -49,8 +47,8 @@ public class Program
         System.IO.File.Delete($"{settings.TempFolder}/{fileName}");
         if (!linuxScriptShell.Move($"{settings.TempFolder}/{fileName}", $"{settings.TempFolder}/{fileName}", true))
             throw new Exception($"Error move file {settings.TempFolder}/{fileName} to {settings.TempFolder}/{fileName}");
-
     }
+
     static async Task PutStringAsFileAsync(IEnumerable<string> text, string linuxDestinationPath, string fileName)
     {
         await System.IO.File.WriteAllLinesAsync($"{settings.TempFolder}/{fileName}", text);
@@ -58,12 +56,10 @@ public class Program
         System.IO.File.Delete($"{settings.TempFolder}/{fileName}");
         if (!linuxScriptShell.Move($"{settings.Linux.TempProjectFolder}/{fileName}", $"{linuxDestinationPath}/{fileName}", true))
             throw new Exception($"Error move file {{settings.Linux.TempProjectFolder}}/{{fileName to {linuxDestinationPath}/{fileName}");
-
     }
 
     static void PutTolinux()
     {
-
         var tarFileName = settings.Linux.TarFileName;
         var tarFilePath = $"{settings.TempFolder}/{tarFileName}";
         var projectName = settings.ProjectName;
@@ -74,7 +70,6 @@ public class Program
 
         if (File.Exists(tarFilePath))
             File.Delete(tarFilePath);
-
 
         // pack project
         if (!localScriptShell.Run($"tar -czvf {tarFileName} {projectName}", tempFolder))
@@ -107,7 +102,6 @@ public class Program
         // check web folder
         if (!linuxScriptShell.DirectoryExist(publishFolder))
         {
-            //
             if (!linuxScriptShell.Mkdir(publishFolder, true))
                 throw new Exception($"Error create folder {publishFolder}");
         }
@@ -126,7 +120,6 @@ public class Program
         {
             throw new Exception($"Error set www-data:www-data !");
         }
-
     }
 
     static async Task StopService()
@@ -141,18 +134,15 @@ public class Program
         }
     }
 
-
     static async Task StartServiceAsync()
     {
         if (string.IsNullOrWhiteSpace(settings.Linux.ServiceName))
             throw new NullReferenceException(nameof(settings.Linux.ServiceName));
 
-
         var tempServiceFileName = $"{settings.TempFolder}/{settings.Linux.ServiceName}.service";
 
         if (!linuxScriptShell.FileExist($"/etc/systemd/system/{settings.Linux.ServiceName}.service"))
         {
-
             var text = settings.GetServiceConfig();
             await File.WriteAllLinesAsync(tempServiceFileName, text);
             linuxScriptShell.PutFile(settings.TempFolder, settings.Linux.TempProjectFolder, $"{settings.Linux.ServiceName}.service");
@@ -180,8 +170,6 @@ public class Program
 
         if (!linuxScriptShell.StartService(settings.Linux.ServiceName))
             throw new Exception($"Do not start service {settings.Linux.ServiceName}");
-
-
     }
 
     static async Task<bool> MigrateAsync()
@@ -209,8 +197,6 @@ public class Program
             linuxScriptShell.Move($"{settings.Linux.TempProjectFolder}/{settings.Linux.ServiceName}", $"/etc/sabatex/{settings.Linux.ServiceName}", true);
         }
 
-
-
         if (!linuxScriptShell.DotnetRun(settings.Linux.PublishFolder, $"{settings.ProjectName}.dll", "--migrate", true))
         {
             throw new Exception($"Error run project {settings.Linux.PublishFolder}");
@@ -237,15 +223,14 @@ public class Program
             await PutStringAsFileAsync(settings.GetNginxConfig(), "/etc/nginx/sites-available", settings.Linux.ServiceName);
             if (!linuxScriptShell.CreateSymlink(configFileName, $"/etc/nginx/sites-enabled/{settings.Linux.ServiceName}", true))
                 return await Error($"Error create symlink /etc/nginx/sites-enabled/{settings.Linux.ServiceName}");
-            if ( !linuxScriptShell.CreateSSLCertificate(settings.ProjectName,settings.Linux.NGINX.HostNames,"192.168.1.1"))
+            if (!linuxScriptShell.CreateSSLCertificate(settings.ProjectName, settings.Linux.NGINX.HostNames, "192.168.1.1"))
                 return await Error($"Error create SSL certificate for {settings.Linux.ServiceName}");
 
             change = true;
-            // create config file for new site
         }
         if (settings.UpdateNginx && !change)
         {
-            backup = $"{configFileName}-{DateTime.Now.ToString().Replace(':', '-').Replace('.', '-').Replace(' ', '-')}";
+            backup = $"{configFileName}-{DateTime.Now.ToString().Replace(':', '-').Replace('.', '-').Replace(' ', '-')}$";
             if (!linuxScriptShell.Copy(configFileName, backup, true))
                 return await Error($"Error copy file {configFileName}");
             await PutStringAsFileAsync(settings.GetNginxConfig(), "/etc/nginx/sites-available", settings.Linux.ServiceName);
@@ -263,12 +248,10 @@ public class Program
                         return await Error($"Error restore backup {backup}");
                 }
                 return await Error("Error test nginx config");
-
             }
             if (!linuxScriptShell.NginxReload())
                 return await Error("Error restart nginx");
         }
-
 
         return true;
     }
@@ -286,13 +269,10 @@ public class Program
         // stop service and create service file if not exist
         StopService();
 
-        // update service file
-
         // move project
         // check web folder
         if (!linuxScriptShell.DirectoryExist(publishFolder))
         {
-            //
             if (!linuxScriptShell.Mkdir(publishFolder, true))
                 throw new Exception($"Error create folder {publishFolder}");
         }
@@ -325,23 +305,18 @@ public class Program
         if (!await UpdateNginx())
             return await Error("Error update nginx");
 
-
         Console.WriteLine($"Start linux service {serviceName}");
         await StartServiceAsync();
         return true;
     }
 
-
     static IConfiguration BuildConfiguration()
     {
         var builder = new ConfigurationBuilder()
-            // 1️⃣ Локальний у папці проекту
             .AddJsonFile("sabatex-publish.json", optional: true, reloadOnChange: true)
-            // 2️⃣ Локальний поруч із утилітою
             .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "sabatex-publish.json"),
                          optional: true, reloadOnChange: true);
 
-        // 3️⃣ Глобальний у OneDrive\.sabatex
         var oneDrive = Environment.GetFolderPath(Environment.SpecialFolder.Personal)
                     .Replace("Documents", "OneDrive");
         var globalPath = Path.Combine(oneDrive, ".sabatex", "sabatex-publish.json");
@@ -349,32 +324,22 @@ public class Program
 
         return builder.Build();
     }
-    static async Task<int> Main(string[] args)
+
+    /// <summary>
+    /// Publish single project (extracted from Main for reusability)
+    /// </summary>
+    /// <param name="projectSettings">Project settings</param>
+    /// <returns>Exit code (0 = success)</returns>
+    public static async Task<int> PublishProjectAsync(SabatexSettings projectSettings)
     {
-        settings = new SabatexSettings();
-        var result = await CommandProcessor.Process(args, settings);
-        if (result.shouldExit)
-        {
-            return result.exitCode;
-        }
-
- 
-
-        if (!File.Exists(settings.ProjFile))
-        {
-            Console.WriteLine("The file not exist: " + settings.ProjFile);
-            Environment.Exit(1);
-        }
+        // set global settings for use in static methods
+        settings = projectSettings;
 
         try
         {
-            var errorCode = settings.ResolveConfig();
-            if (errorCode != 0)
-            {
-                return errorCode;
-            }
             if (settings.IsLibrary)
             {
+                // publish library to NuGet
                 string nugetAuthToken = settings.NUGET.GetToken();
                 if (Directory.Exists(settings.OutputPath))
                 {
@@ -391,7 +356,6 @@ public class Program
                     {
                         throw new Exception("Error publish to nuget!");
                     }
-
                 }
                 else
                 {
@@ -403,22 +367,47 @@ public class Program
             }
             else
             {
+                // publish application to Linux
                 Build();
                 PutTolinux();
                 if (!settings.Linux.FrontEnd)
                     await UpdateBackendAsync();
                 else
                     UpdateBlazorwasm();
-
             }
-            Console.WriteLine("Done!");
+
+            Logger.Info("Done!");
+            return 0;
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.Message);
+            Logger.Error(ex.Message);
+            return 1;
+        }
+    }
+
+    static async Task<int> Main(string[] args)
+    {
+        settings = new SabatexSettings();
+        var result = await CommandProcessor.Process(args, settings);
+        if (result.shouldExit)
+        {
+            return result.exitCode;
+        }
+
+        if (!File.Exists(settings.ProjFile))
+        {
+            Console.WriteLine("The file not exist: " + settings.ProjFile);
             Environment.Exit(1);
         }
 
-        return 0;
+        var errorCode = settings.ResolveConfig();
+        if (errorCode != 0)
+        {
+            return errorCode;
+        }
+
+        // call extracted publishing logic
+        return await PublishProjectAsync(settings);
     }
 }
