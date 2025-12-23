@@ -358,17 +358,15 @@ public class Program
     /// </summary>
     /// <param name="projectSettings">Project settings</param>
     /// <returns>Exit code (0 = success)</returns>
-    public static async Task<int> PublishProjectAsync(SabatexSettings projectSettings)
+    public static async Task<int> PublishProjectAsync(SabatexSettings settings)
     {
-        var settings = projectSettings;
-
         try
         {
             if (settings.IsLibrary)
             {
                 var localScriptShell = new LocalScriptShell(settings.TempPublishProjectFolder);
                 
-                string nugetAuthToken = settings.NUGET.GetToken();
+                string nugetAuthToken = settings.NUGET?.GetToken() ?? throw new Exception("The NUGET section not initialized!");
                 if (Directory.Exists(settings.OutputPath))
                 {
                     string packagesPath = $"{settings.OutputPath}\\*.nupkg";

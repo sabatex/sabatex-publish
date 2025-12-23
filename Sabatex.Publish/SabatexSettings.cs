@@ -96,13 +96,13 @@ public class SabatexSettings : AppConfig
         // read csproj data
         var xml = new System.Xml.XmlDocument();
         xml.Load(ProjFile);
-        var versionNode = xml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;  // FIXED: renamed
+        var versionNode = xml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
         if (versionNode == null)
         {
             Logger.Error($"The project file {ProjFile} do not include section <PropertyGroup/Version>");
             return 6;
         }
-        _version = versionNode;  // FIXED: assign after null check
+        _version = versionNode;
         
         var ver = new Version(_version);
         IsPreRelease = ver.IsPreRelease;
@@ -133,14 +133,39 @@ public class SabatexSettings : AppConfig
         
         var userSecretId = xml.SelectSingleNode("Project/PropertyGroup/UserSecretsId")?.InnerText;
 
-        Linux = new Linux(ProjectName);
-        var builder = new ConfigurationBuilder().SetBasePath(ProjectFolder);
-        string appConfig = $"{ProjectFolder}/sabatex-publish.json";
-        if (File.Exists($"{appConfig}"))
-            builder.AddJsonFile(appConfig);
+        //# OLD (завжди створювалось):
+        //Linux = new Linux(ProjectName);
 
+        //# NEW (тільки для додатків):
+        if (!IsLibrary)
+        {
+            Linux = new Linux(ProjectName);
+        }
+
+        var builder = new ConfigurationBuilder().SetBasePath(ProjectFolder);
+        
+        //# Configuration loading priority (lowest to highest):
+        //# 1. User Profile global settings (main location)
+        //# Windows: C:\Users\<username>\.sabatex\sabatex-publish.json
+        //# Linux:   /home/<username>/.sabatex/sabatex-publish.json
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var userProfilePath = Path.Combine(userProfile, ".sabatex", "sabatex-publish.json");
+        if (File.Exists(userProfilePath))
+        {
+            builder.AddJsonFile(userProfilePath, optional: true);
+        }
+
+        //# 2. Current directory (highest priority - local override for testing)
+        string localConfig = "sabatex-publish.json";
+        if (File.Exists(localConfig))
+        {
+            builder.AddJsonFile(localConfig, optional: true);
+        }
+
+        //# 3. Project-specific appsettings.json
         if (File.Exists($"{ProjectFolder}/{configFileName}"))
             builder.AddJsonFile(configFileName);
+        
         if (!String.IsNullOrWhiteSpace(userSecretId))
             builder.AddUserSecrets(userSecretId);
 
@@ -158,7 +183,7 @@ public class SabatexSettings : AppConfig
             NUGET = new NUGET();
         }
 
-        if (string.IsNullOrWhiteSpace(TempFolder))  // FIXED: explicit check
+        if (string.IsNullOrWhiteSpace(TempFolder))
         {
             TempFolder = $"{Path.GetTempPath()}Sabatex";
         }
