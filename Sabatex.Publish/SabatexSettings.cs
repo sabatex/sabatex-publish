@@ -97,18 +97,90 @@ public class SabatexSettings : AppConfig
         var xml = new System.Xml.XmlDocument();
         xml.Load(ProjFile);
         var versionNode = xml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
-        if (versionNode == null)
+
+        //# If version is empty or missing, check for SetVersionFrom* target
+        if (string.IsNullOrWhiteSpace(versionNode))
         {
-            Logger.Error($"The project file {ProjFile} do not include section <PropertyGroup/Version>");
+            //# Look for MSBuild Target with Name starting with "SetVersionFrom"
+            var setVersionTarget = xml.SelectSingleNode("//Target[starts-with(@Name, 'SetVersionFrom')]");
+            
+            if (setVersionTarget != null)
+            {
+                var targetName = setVersionTarget.Attributes?["Name"]?.Value;
+                Logger.Info($"Found dynamic version target: {targetName}");
+                
+                //# Read version from first ProjectReference
+                var firstProjectRef = xml.SelectSingleNode("//ProjectReference");
+                if (firstProjectRef != null)
+                {
+                    var refPath = firstProjectRef.Attributes?["Include"]?.Value;
+                    if (!string.IsNullOrWhiteSpace(refPath))
+                    {
+                        var fullRefPath = Path.Combine(ProjectFolder, refPath);
+                        if (File.Exists(fullRefPath))
+                        {
+                            try
+                            {
+                                var refXml = new System.Xml.XmlDocument();
+                                refXml.Load(fullRefPath);
+                                versionNode = refXml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
+                                
+                                if (!string.IsNullOrWhiteSpace(versionNode))
+                                {
+                                    Logger.Info($"Version inherited from '{Path.GetFileName(refPath)}': {versionNode}");
+                                }
+                                else
+                                {
+                                    Logger.Error($"Referenced project '{refPath}' does not have <Version> element.");
+                                    return 6;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Error($"Error reading version from '{refPath}': {ex.Message}");
+                                return 6;
+                            }
+                        }
+                        else
+                        {
+                            Logger.Error($"Referenced project file not found: {fullRefPath}");
+                            return 6;
+                        }
+                    }
+                    else
+                    {
+                        Logger.Error("ProjectReference found but Include attribute is empty");
+                        return 6;
+                    }
+                }
+                else
+                {
+                    Logger.Error($"Found '{targetName}' target but no ProjectReference elements.");
+                    return 6;
+                }
+            }
+            else
+            {
+                Logger.Error($"The project {Path.GetFileName(ProjFile)} does not have <Version> element.");
+                Logger.Info("Fix: Add <Version>1.0.0</Version> or create <Target Name=\"SetVersionFrom...\"> with ProjectReference.");
+                return 6;
+            }
+        }
+
+        //# Final validation
+        if (string.IsNullOrWhiteSpace(versionNode))
+        {
+            Logger.Error($"Failed to resolve version for {Path.GetFileName(ProjFile)}");
             return 6;
         }
+
         _version = versionNode;
         
         var ver = new Version(_version);
         IsPreRelease = ver.IsPreRelease;
         BuildConfiguration = IsPreRelease ? "Debug" : "Release";
         OutputPath = $"{Path.GetTempPath()}sabatex\\{ProjectName}\\bin\\{BuildConfiguration}";
-  
+
         var sdk = xml.SelectSingleNode("Project")?.Attributes?.GetNamedItem("Sdk")?.Value;
         if (sdk == null)
         {
@@ -133,10 +205,6 @@ public class SabatexSettings : AppConfig
         
         var userSecretId = xml.SelectSingleNode("Project/PropertyGroup/UserSecretsId")?.InnerText;
 
-        //# OLD (завжди створювалось):
-        //Linux = new Linux(ProjectName);
-
-        //# NEW (тільки для додатків):
         if (!IsLibrary)
         {
             Linux = new Linux(ProjectName);

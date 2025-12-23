@@ -145,3 +145,18 @@
 ### 🟢 When User Gives Direct Instruction
 
 **IMMEDIATELY: Provide code**
+
+---
+
+## NuGet Publishing Rules
+
+### Publishing Destinations:
+
+1. **Release versions** (`1.0.0`) → **NuGet.org** (public)
+2. **Pre-release versions** (`1.0.0-rc1`) → **Local NuGet storage** (testing)
+
+**Version detection:**
+- `IsPreRelease = true` → contains suffix (`-rc`, `-beta`, `-alpha`)
+- `IsPreRelease = false` → release version (no suffix)
+
+**See CONTRIBUTING.md for detailed version management rules.**
