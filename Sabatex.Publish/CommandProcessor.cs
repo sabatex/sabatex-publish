@@ -85,7 +85,7 @@ public static class CommandProcessor
         return rootCommand;
     }
 
-    public static async Task<(int exitCode,bool sholdExit, string? projectFolder,string? projFile,bool migrate,bool updateService,bool updateNginx)> Process(string[] args)
+    public static async Task<(int exitCode,bool shouldExit, string? projectFolder,string? projFile,bool migrate,bool updateService,bool updateNginx)> Process(string[] args)
     {
         var rootCommand = InitialCMD();
 
@@ -119,12 +119,13 @@ public static class CommandProcessor
         await parseResult.InvokeAsync();
 
         // check if special command was invoked (help, set, init-batch)
-        var actionType = parseResult.Action.GetType() ?? typeof(object);
+        var actionType = parseResult.Action?.GetType() ?? typeof(object);
+        //# Line 122 warning - check Command.Name
         if (actionType == typeof(System.CommandLine.Help.HelpAction) || 
             actionType == typeof(SetAction) ||
-            parseResult.CommandResult.Command.Name == "init-batch")
+            (parseResult.CommandResult.Command.Name != null && parseResult.CommandResult.Command.Name == "init-batch"))
         {
-            return (0,true, projectFolder, projFile, migrate, updateService, updateNginx);
+            return (exitCode: 0, shouldExit: true, null, null, false, false, false);
         }
 
         return (0,false, projectFolder, projFile, migrate, updateService, updateNginx);

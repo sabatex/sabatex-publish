@@ -41,32 +41,19 @@ public class Program
             throw new Exception("Error build project!");
     }
 
-    static async Task PutStringAsFileAsync(SabatexSettings settings, string text, string linuxDestinationPath, string fileName)
-    {
-        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
-        var linuxScriptShell = new LinuxScriptShell(
-            settings.TempFolder, 
-            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
-    
-        await System.IO.File.WriteAllTextAsync($"{settings.TempFolder}/{fileName}", text);
-        linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, fileName);
-        System.IO.File.Delete($"{settings.TempFolder}/{fileName}");
-        if (!linuxScriptShell.Move($"{settings.TempFolder}/{fileName}", $"{settings.TempFolder}/{fileName}", true))
-            throw new Exception($"Error move file {settings.TempFolder}/{fileName} to {settings.TempFolder}/{fileName}");
-    }
-
     static async Task PutStringAsFileAsync(SabatexSettings settings, IEnumerable<string> text, string linuxDestinationPath, string fileName)
     {
         var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var tempProjectFolder = linux.TempProjectFolder ?? throw new InvalidOperationException("TempProjectFolder not configured");
         var linuxScriptShell = new LinuxScriptShell(
             settings.TempFolder, 
             linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
-    
+
         await System.IO.File.WriteAllLinesAsync($"{settings.TempFolder}/{fileName}", text);
-        linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, fileName);
+        linuxScriptShell.PutFile(settings.TempFolder, tempProjectFolder, fileName);
         System.IO.File.Delete($"{settings.TempFolder}/{fileName}");
-        if (!linuxScriptShell.Move($"{linux.TempProjectFolder}/{fileName}", $"{linuxDestinationPath}/{fileName}", true))
-            throw new Exception($"Error move file {linux.TempProjectFolder}/{fileName} to {linuxDestinationPath}/{fileName}");
+        if (!linuxScriptShell.Move($"{tempProjectFolder}/{fileName}", $"{linuxDestinationPath}/{fileName}", true))
+            throw new Exception($"Error move file {tempProjectFolder}/{fileName} to {linuxDestinationPath}/{fileName}");
     }
 
     static void PutTolinux(SabatexSettings settings)
@@ -107,7 +94,7 @@ public class Program
     static void UpdateBlazorwasm(SabatexSettings settings)
     {
         var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
-        var publishFolder = linux.PublishFolder;
+        var publishFolder = linux.PublishFolder ?? throw new InvalidOperationException("PublishFolder not configured");
         var tempProjectFolder = linux.TempProjectFolder ?? throw new InvalidOperationException("TempProjectFolder not configured");
         var linuxScriptShell = new LinuxScriptShell(
             settings.TempPublishProjectFolder, 
@@ -152,6 +139,7 @@ public class Program
     static async Task StartServiceAsync(SabatexSettings settings)
     {
         var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var tempProjectFolder = linux.TempProjectFolder ?? throw new InvalidOperationException("TempProjectFolder not configured");
         var linuxScriptShell = new LinuxScriptShell(
             settings.TempFolder, 
             linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
@@ -165,10 +153,10 @@ public class Program
         {
             var text = settings.GetServiceConfig();
             await File.WriteAllLinesAsync(tempServiceFileName, text);
-            linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, $"{linux.ServiceName}.service");
+            linuxScriptShell.PutFile(settings.TempFolder, tempProjectFolder, $"{linux.ServiceName}.service");
             File.Delete(tempServiceFileName);
 
-            if (!linuxScriptShell.Move($"{linux.TempProjectFolder}/{linux.ServiceName}.service", $"/etc/systemd/system/{linux.ServiceName}.service", true))
+            if (!linuxScriptShell.Move($"{tempProjectFolder}/{linux.ServiceName}.service", $"/etc/systemd/system/{linux.ServiceName}.service", true))
                 throw new Exception($"Do not create service {linux.ServiceName}");
             if (!linuxScriptShell.EnableService(linux.ServiceName))
                 throw new Exception($"Do not enable service {linux.ServiceName}");
@@ -179,9 +167,9 @@ public class Program
             {
                 var text = settings.GetServiceConfig();
                 await File.WriteAllLinesAsync(tempServiceFileName, text);
-                linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, $"{linux.ServiceName}.service");
+                linuxScriptShell.PutFile(settings.TempFolder, tempProjectFolder, $"{linux.ServiceName}.service");
                 File.Delete(tempServiceFileName);
-                if (!linuxScriptShell.Move($"{linux.TempProjectFolder}/{linux.ServiceName}.service", $"/etc/systemd/system/{linux.ServiceName}.service", true))
+                if (!linuxScriptShell.Move($"{tempProjectFolder}/{linux.ServiceName}.service", $"/etc/systemd/system/{linux.ServiceName}.service", true))
                     throw new Exception($"Do not move service {linux.ServiceName}");
 
                 linuxScriptShell.DaemonReload();
@@ -195,6 +183,8 @@ public class Program
     static async Task<bool> MigrateAsync(SabatexSettings settings)
     {
         var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var tempProjectFolder = linux.TempProjectFolder ?? throw new InvalidOperationException("TempProjectFolder not configured");
+        var publishFolder = linux.PublishFolder ?? throw new InvalidOperationException("PublishFolder not configured");
         var linuxScriptShell = new LinuxScriptShell(
             settings.TempFolder, 
             linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
@@ -211,7 +201,7 @@ public class Program
         {
             var text = settings.GetConfig();
             await File.WriteAllTextAsync(tempConfigFileName, text);
-            linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, linux.ServiceName);
+            linuxScriptShell.PutFile(settings.TempFolder, tempProjectFolder, linux.ServiceName);
             File.Delete(tempConfigFileName);
             if (!linuxScriptShell.DirectoryExist("/etc/sabatex"))
             {
@@ -222,9 +212,9 @@ public class Program
             linuxScriptShell.Move($"{linux.TempProjectFolder}/{linux.ServiceName}", $"/etc/sabatex/{linux.ServiceName}", true);
         }
 
-        if (!linuxScriptShell.DotnetRun(linux.PublishFolder, $"{settings.ProjectName}.dll", "--migrate", true))
+        if (!linuxScriptShell.DotnetRun(publishFolder, $"{settings.ProjectName}.dll", "--migrate", true))
         {
-            throw new Exception($"Error run project {linux.PublishFolder}");
+            throw new Exception($"Error run project {publishFolder}");
         }
         return true;
     }
@@ -254,7 +244,8 @@ public class Program
             await PutStringAsFileAsync(settings, settings.GetNginxConfig(), "/etc/nginx/sites-available", linux.ServiceName);
             if (!linuxScriptShell.CreateSymlink(configFileName, $"/etc/nginx/sites-enabled/{linux.ServiceName}", true))
                 return await Error($"Error create symlink /etc/nginx/sites-enabled/{linux.ServiceName}");
-            if (!linuxScriptShell.CreateSSLCertificate(settings.ProjectName, linux.NGINX.HostNames, "192.168.1.1"))
+            var hostNames = linux.NGINX.HostNames ?? throw new InvalidOperationException("HostNames not configured");
+            if (!linuxScriptShell.CreateSSLCertificate(settings.ProjectName, hostNames, "192.168.1.1"))
                 return await Error($"Error create SSL certificate for {linux.ServiceName}");
 
             change = true;
@@ -295,7 +286,7 @@ public class Program
             linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
     
         var serviceName = linux.ServiceName;
-        var publishFolder = linux.PublishFolder;
+        var publishFolder = linux.PublishFolder ?? throw new InvalidOperationException("PublishFolder not configured");
         var tempProjectFolder = linux.TempProjectFolder ?? throw new InvalidOperationException("TempProjectFolder not configured");
         
         if (linux.FrontEnd)
@@ -338,21 +329,6 @@ public class Program
         return true;
     }
 
-    static IConfiguration BuildConfiguration()
-    {
-        var builder = new ConfigurationBuilder()
-            .AddJsonFile("sabatex-publish.json", optional: true, reloadOnChange: true)
-            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "sabatex-publish.json"),
-                         optional: true, reloadOnChange: true);
-
-        var oneDrive = Environment.GetFolderPath(Environment.SpecialFolder.Personal)
-                    .Replace("Documents", "OneDrive");
-        var globalPath = Path.Combine(oneDrive, ".sabatex", "sabatex-publish.json");
-        builder.AddJsonFile(globalPath, optional: true, reloadOnChange: true);
-
-        return builder.Build();
-    }
-
     /// <summary>
     /// Publish single project (extracted from Main for reusability)
     /// </summary>
@@ -393,9 +369,12 @@ public class Program
             }
             else
             {
+                //# Ensure Linux is initialized for non-library projects
+                var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+                
                 Build(settings);
                 PutTolinux(settings);
-                if (!settings.Linux.FrontEnd)
+                if (!linux.FrontEnd)
                     await UpdateBackendAsync(settings);
                 else
                     UpdateBlazorwasm(settings);
