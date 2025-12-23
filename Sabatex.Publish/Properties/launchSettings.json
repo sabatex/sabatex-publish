@@ -2,7 +2,7 @@
   "profiles": {
     "sabatex-publish": {
       "commandName": "Project",
-      "commandLineArgs": "-p C:\\Users\\serhi\\source\\repos\\sabatex\\Extensions\\Sabatex.Core\\Sabatex.Core.csproj"
+      "commandLineArgs": "-d C:\\Users\\serhi\\repos\\sabatex\\SabatexBlazor"
     }
   }
 }

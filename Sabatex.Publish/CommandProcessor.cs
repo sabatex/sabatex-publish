@@ -33,6 +33,11 @@ public static class CommandProcessor
             Description = "The csproj file path. If not set, the program will auto-detect mode (batch or single)."
         };
 
+        Option<string> solutionOption = new("--solution", new string[] { "-d" })
+        {
+            Description = "The solution folder path for batch publishing. If not set, uses current directory."
+        };
+
         var cmdSet = new Command("set", "Set global values")
         {
             new Option<string>("--NuGetDebugPackagePath", "-p")
@@ -72,23 +77,31 @@ public static class CommandProcessor
             updateServiceOption,
             updateNginxOption,
             projFileOption,
+            solutionOption,
             cmdSet,
-            cmdInitBatch  // add new command
+            cmdInitBatch
         };
 
         return rootCommand;
     }
 
-    public static async Task<(int exitCode, bool shouldExit)> Process(string[] args, SabatexSettings settings)
+    public static async Task<(int exitCode,bool sholdExit, string? projectFolder,string? projFile,bool migrate,bool updateService,bool updateNginx)> Process(string[] args)
     {
         var rootCommand = InitialCMD();
 
+        string? projectFolder = null;
+        string? projFile = null;
+        bool migrate = false;
+        bool updateService = false;
+        bool updateNginx = false;
+
         rootCommand.SetAction(parseResult =>
         {
-            settings.Migrate = parseResult.GetValue<bool>("--migrate");
-            settings.UpdateService = parseResult.GetValue<bool>("--updateservice");
-            settings.UpdateNginx = parseResult.GetValue<bool>("--updatenginx");
-            settings.ProjFile = parseResult.GetValue<string>("--csproj");
+            migrate = parseResult.GetValue<bool>("--migrate");
+            updateService = parseResult.GetValue<bool>("--updateservice");
+            updateNginx = parseResult.GetValue<bool>("--updatenginx");
+            projFile = parseResult.GetValue<string>("--csproj");
+            projectFolder = parseResult.GetValue<string>("--solution");
         });
 
         var parseResult = rootCommand.Parse(args);
@@ -100,67 +113,21 @@ public static class CommandProcessor
             {
                 Logger.Error(error.Message);
             }
-            return (exitCode: 1, shouldExit: true);
+            return (1,true,projectFolder,projFile,migrate,updateService,updateService);
         }
 
         await parseResult.InvokeAsync();
 
         // check if special command was invoked (help, set, init-batch)
-        var actionType = parseResult.Action.GetType();
+        var actionType = parseResult.Action.GetType() ?? typeof(object);
         if (actionType == typeof(System.CommandLine.Help.HelpAction) || 
             actionType == typeof(SetAction) ||
             parseResult.CommandResult.Command.Name == "init-batch")
         {
-            return (exitCode: 0, shouldExit: true);
+            return (0,true, projectFolder, projFile, migrate, updateService, updateNginx);
         }
 
-        // NEW LOGIC: automatic mode detection
-        if (settings.ProjFile == null)
-        {
-            // use ProjectDetector for smart mode detection
-            var detection = ProjectDetector.Detect();
-
-            if (!detection.IsSuccess)
-            {
-                // detection error - print recommendations
-                ProjectDetector.PrintDetectionResult(detection);
-                return (exitCode: 2, shouldExit: true);
-            }
-
-            if (detection.Mode == ProjectDetector.DetectionMode.Batch)
-            {
-                // found batch configuration - start batch publishing
-                Logger.Info("Starting batch publishing mode...");
-                Console.WriteLine();
-
-                var exitCode = await BatchPublisher.PublishAllAsync(
-                    detection.BatchConfigPath,
-                    settings.Migrate,
-                    settings.UpdateService,
-                    settings.UpdateNginx);
-
-                return (exitCode: exitCode, shouldExit: true);
-            }
-            else if (detection.Mode == ProjectDetector.DetectionMode.Single)
-            {
-                // found one project - use it
-                settings.ProjFile = detection.ProjectPath;
-                Logger.Info($"Auto-detected single project: {Path.GetFileName(settings.ProjFile)}");
-            }
-        }
-        else
-        {
-            // explicitly specified --csproj, check existence
-            if (!File.Exists(settings.ProjFile))
-            {
-                Logger.Error($"Specified project file not found: {settings.ProjFile}");
-                return (exitCode: 4, shouldExit: true);
-            }
-            Logger.Info($"Using specified project: {Path.GetFileName(settings.ProjFile)}");
-        }
-
-        // continue with single-project mode
-        return (exitCode: 0, shouldExit: false);
+        return (0,false, projectFolder, projFile, migrate, updateService, updateNginx);
     }
 }
 

@@ -1,4 +1,4 @@
-﻿// filename: SabatexSettings.cs
+// filename: SabatexSettings.cs
 using Microsoft.Extensions.Configuration;
 using sabatex_publish;
 using System;
@@ -13,27 +13,28 @@ namespace Sabatex.Publish;
 public class SabatexSettings : AppConfig
 {
     const string configFileName = "appsettings.json";
-    //readonly string _projectFilePath;
-    string _version;
+    
+    private string _version = string.Empty;  // FIXED: initialized
 
     public string? ProjFile { get; set; }
     public bool UpdateNginx { get; set; } = false;
     public bool UpdateService { get; set; } = false;
     public bool Migrate { get; set; } = false;
 
-
     #region bindable from appsetings.json
     /// <summary>
     /// May be set from project appsetings.json sabatex:TempFolder,
     /// default {user temp folder}/sabatex
     /// </summary>
-    public string TempFolder { get; set; }
+    public string TempFolder { get; set; } = string.Empty;  // FIXED: initialized
 
     #endregion
+    
     /// <summary>
     /// The project name set as csproj file name
     /// </summary>
     public string ProjectName => Path.GetFileNameWithoutExtension(ProjFile ?? throw new Exception("The ProjFile is null"));
+    
     public string ProjectFolder
     {
         get
@@ -46,20 +47,16 @@ public class SabatexSettings : AppConfig
             return result;
         }
     }
+    
     public string Version => _version;
 
-    public string TempPublishProjectFolder { get; private set; } = default!;
-
+    public string TempPublishProjectFolder { get; private set; } = string.Empty;  // FIXED: initialized
     public bool IsPreRelease { get; private set; }
-    public string OutputPath { get; private set; }
-    public string BuildConfiguration { get; private set; }
-
+    public string OutputPath { get; private set; } = string.Empty;  // FIXED: initialized
+    public string BuildConfiguration { get; private set; } = string.Empty;  // FIXED: initialized
 
     public Linux? Linux { get; set; }
-
     public NUGET? NUGET { get; set; }
-
-
     public bool IsLibrary { get; private set; }
     
     public SabatexSettings()
@@ -84,7 +81,6 @@ public class SabatexSettings : AppConfig
             ProjFile = files[0];
         }
 
-
         if (!File.Exists(ProjFile))
         {
             Logger.Error("The file not exist: " + ProjFile);
@@ -100,12 +96,13 @@ public class SabatexSettings : AppConfig
         // read csproj data
         var xml = new System.Xml.XmlDocument();
         xml.Load(ProjFile);
-        _version = xml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
-        if (_version == null)
+        var versionNode = xml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;  // FIXED: renamed
+        if (versionNode == null)
         {
             Logger.Error($"The project file {ProjFile} do not include section <PropertyGroup/Version>");
             return 6;
         }
+        _version = versionNode;  // FIXED: assign after null check
         
         var ver = new Version(_version);
         IsPreRelease = ver.IsPreRelease;
@@ -118,6 +115,7 @@ public class SabatexSettings : AppConfig
             Logger.Error($"Do not read SDK type from project");
             return 7;
         }
+        
         switch (sdk)
         {
             case "Microsoft.NET.Sdk.Web":
@@ -131,15 +129,13 @@ public class SabatexSettings : AppConfig
             default:
                 Logger.Error($"Uknown SDK type");
                 return 8;
-
         }
+        
         var userSecretId = xml.SelectSingleNode("Project/PropertyGroup/UserSecretsId")?.InnerText;
-
-
 
         Linux = new Linux(ProjectName);
         var builder = new ConfigurationBuilder().SetBasePath(ProjectFolder);
-        string appConfig = $"{AppDomain.CurrentDomain.BaseDirectory}/sabatex-publish.json";
+        string appConfig = $"{ProjectFolder}/sabatex-publish.json";
         if (File.Exists($"{appConfig}"))
             builder.AddJsonFile(appConfig);
 
@@ -147,7 +143,6 @@ public class SabatexSettings : AppConfig
             builder.AddJsonFile(configFileName);
         if (!String.IsNullOrWhiteSpace(userSecretId))
             builder.AddUserSecrets(userSecretId);
-
 
         var conf = builder.Build();
         var sabatexSection = conf.GetSection("SabatexSettings");
@@ -163,7 +158,7 @@ public class SabatexSettings : AppConfig
             NUGET = new NUGET();
         }
 
-        if (TempFolder == null)
+        if (string.IsNullOrWhiteSpace(TempFolder))  // FIXED: explicit check
         {
             TempFolder = $"{Path.GetTempPath()}Sabatex";
         }
@@ -172,7 +167,6 @@ public class SabatexSettings : AppConfig
         {
             Directory.CreateDirectory(TempFolder);
         }
-
 
         TempPublishProjectFolder = $"{TempFolder}\\{ProjectName}";
         if (!Directory.Exists(TempPublishProjectFolder))
@@ -185,6 +179,9 @@ public class SabatexSettings : AppConfig
 
     public IEnumerable<string> GetServiceConfig()
     {
+        if (Linux == null)
+            throw new InvalidOperationException("Linux configuration not initialized");  // FIXED: null check
+
         yield return "[Unit]";
         yield return $"Description = ASP.NET Core {ProjectName}";
         yield return "[Service]";
@@ -197,7 +194,6 @@ public class SabatexSettings : AppConfig
         yield return "User=www-data";
         yield return "Environment=ASPNETCORE_ENVIRONMENT=Production";
         yield return "Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false";
-
         yield return $"Environment=ASPNETCORE_URLS=http://localhost:{Linux.Port}";
         yield return "[Install]";
         yield return "WantedBy=multi-user.target";
@@ -205,6 +201,9 @@ public class SabatexSettings : AppConfig
 
     public IEnumerable<string> GetNginxConfig()
     {
+        if (Linux == null)
+            throw new InvalidOperationException("Linux configuration not initialized");  // FIXED: null check
+
         yield return "server {";
         yield return "    listen 80;";
         yield return $"    server_name {Linux.NGINX.HostNames};";
@@ -226,7 +225,6 @@ public class SabatexSettings : AppConfig
         {
             yield return $"    ssl_certificate_key       {Linux.NGINX.SSLPrivate};";
         }
-
 
         yield return "    ssl_protocols             TLSv1.1 TLSv1.2;";
         yield return "    ssl_prefer_server_ciphers on;";
@@ -261,6 +259,4 @@ public class SabatexSettings : AppConfig
         yield return "    }";
         yield return "}";
     }
-
-
 }

@@ -150,19 +150,15 @@ public static class ProjectDetector
     {
         if (!result.IsSuccess)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Logger.Error($"✗ {result.ErrorMessage}");
-            Console.ResetColor();
-            Console.WriteLine();
+            Logger.Error($"{result.ErrorMessage}");
+            Logger.Info(""); // empty line
             
             if (result.Recommendations.Count > 0)
             {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Logger.Info("Recommendations:");
-                Console.ResetColor();
+                Logger.Warn("Recommendations:");
                 foreach (var recommendation in result.Recommendations)
                 {
-                    Console.WriteLine(recommendation);
+                    Logger.Info(recommendation);
                 }
             }
         }

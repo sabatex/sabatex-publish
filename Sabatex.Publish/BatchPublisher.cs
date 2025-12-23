@@ -78,7 +78,7 @@ public static class BatchPublisher
         
         Logger.Info($"📦 Batch publishing {enabledProjects.Count} project(s)...");
         Logger.Info($"📁 Base directory: {config.BaseDirectory}");
-        Console.WriteLine();
+        Logger.Info(""); // empty line
 
         int successCount = 0;
         int failedCount = 0;
@@ -92,7 +92,7 @@ public static class BatchPublisher
                 : Path.Combine(config.BaseDirectory!, projectPath);
 
             Logger.Info($"[{i + 1}/{enabledProjects.Count}] Publishing: {projectPath}");
-            Console.WriteLine(new string('=', 60));
+            Logger.Info(new string('=', 60));
 
             try
             {
@@ -105,30 +105,24 @@ public static class BatchPublisher
                 if (exitCode == 0)
                 {
                     successCount++;
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Logger.Info($"✓ Success: {projectPath}");
-                    Console.ResetColor();
+                    Logger.Success($"Success: {projectPath}");
                 }
                 else
                 {
                     failedCount++;
                     failedProjects.Add((projectPath, $"Exit code: {exitCode}"));
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Logger.Error($"✗ Failed: {projectPath} (exit code: {exitCode})");
-                    Console.ResetColor();
+                    Logger.Error($"Failed: {projectPath} (exit code: {exitCode})");
                 }
             }
             catch (Exception ex)
             {
                 failedCount++;
                 failedProjects.Add((projectPath, ex.Message));
-                Console.ForegroundColor = ConsoleColor.Red;
-                Logger.Error($"✗ Error: {projectPath}");
+                Logger.Error($"Error: {projectPath}");
                 Logger.Error($"  {ex.Message}");
-                Console.ResetColor();
             }
 
-            Console.WriteLine();
+            Logger.Info(""); // empty line between projects
         }
 
         // print summary
@@ -181,17 +175,14 @@ public static class BatchPublisher
         int failedCount, 
         List<(string path, string error)> failedProjects)
     {
-        Console.WriteLine(new string('=', 60));
+        Logger.Info(new string('=', 60));
         Logger.Info("📊 Batch Publish Summary:");
         
-        Console.ForegroundColor = ConsoleColor.Green;
-        Logger.Info($"  ✓ Successful: {successCount}");
+        Logger.Success($"  ✓ Successful: {successCount}");
         
         if (failedCount > 0)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
             Logger.Error($"  ✗ Failed: {failedCount}");
-            Console.ResetColor();
             Logger.Error("  Failed projects:");
             foreach (var (path, error) in failedProjects)
             {
@@ -199,8 +190,6 @@ public static class BatchPublisher
                 Logger.Error($"      Reason: {error}");
             }
         }
-        
-        Console.ResetColor();
     }
 
     /// <summary>
@@ -213,10 +202,8 @@ public static class BatchPublisher
 
         if (File.Exists(path))
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
             Logger.Warn($"Configuration file already exists: {path}");
-            Console.ResetColor();
-            Console.Write("Overwrite? (y/n): ");
+            Logger.Info("Overwrite? (y/n): ", newLine: false); // inline prompt
             var answer = Console.ReadLine()?.ToLower();
             if (answer != "y" && answer != "yes")
             {
@@ -256,9 +243,7 @@ public static class BatchPublisher
         var json = JsonSerializer.Serialize(sampleConfig, options);
         File.WriteAllText(path, json);
         
-        Console.ForegroundColor = ConsoleColor.Green;
-        Logger.Info($"✓ Sample configuration created: {path}");
-        Console.ResetColor();
+        Logger.Success($"Sample configuration created: {path}");
         Logger.Info("  Edit this file to add your project paths.");
         Logger.Info($"  Relative paths are resolved from: {Path.GetDirectoryName(Path.GetFullPath(path))}");
     }

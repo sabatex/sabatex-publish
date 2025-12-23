@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
@@ -9,11 +9,10 @@ namespace sabatex_publish;
 
 public class AppConfig
 {
-    public Dictionary<string, string> ConnectionStrings { get; set; }
+    public Dictionary<string, string> ConnectionStrings { get; set; } = new();  // FIXED: initialized
 
     public string? GetConfig()
     {
         return System.Text.Json.JsonSerializer.Serialize(this as AppConfig);
     }
-
 }

@@ -2,19 +2,18 @@ using Microsoft.Extensions.Configuration;
 using Sabatex.Publish;
 using sabatex_publish;
 using System.CommandLine;
+using System.IO;
 using System.Reflection.Metadata;
+using System.Text.Json;
 
 namespace sabatex_publish;
 
 public class Program
 {
-    static SabatexSettings settings;
-
-    static LinuxScriptShell linuxScriptShell => new LinuxScriptShell(settings.TempFolder, settings.Linux.BitviseTlpFile);
-    static LocalScriptShell localScriptShell => new LocalScriptShell(settings.TempPublishProjectFolder);
-
-    static async Task PackNugetAsync()
+    private const string BatchConfigFileName = "sabatex-publish-solution.json";
+    static async Task PackNugetAsync(SabatexSettings settings)
     {
+        var localScriptShell = new LocalScriptShell(settings.TempPublishProjectFolder);
         string includeSource = settings.IsPreRelease ? "--include-source" : string.Empty;
         string script = $"dotnet pack --configuration {settings.BuildConfiguration} {includeSource} --output \"{settings.OutputPath}\" \"{settings.ProjFile}\" ";
         if (!await localScriptShell.RunAsync(script))
@@ -23,68 +22,81 @@ public class Program
 
     static async Task<bool> Error(string message)
     {
-        Console.WriteLine(message);
+        Logger.Error(message);
         await Task.Yield();
         return false;
     }
 
-    static void Build()
+    static void Build(SabatexSettings settings)
     {
         if (Directory.Exists(settings.TempPublishProjectFolder))
         {
             Directory.Delete(settings.TempPublishProjectFolder, true);
         }
         Directory.CreateDirectory(settings.TempPublishProjectFolder);
+        
+        var localScriptShell = new LocalScriptShell(settings.TempPublishProjectFolder);
         string script = $"dotnet publish {settings.ProjectFolder}/{settings.ProjectName}.csproj --configuration Release  -o {settings.TempPublishProjectFolder}";
         if (!localScriptShell.Run(script, settings.ProjectFolder))
             throw new Exception("Error build project!");
     }
 
-    static async Task PutStringAsFileAsync(string text, string linuxDestinationPath, string fileName)
+    static async Task PutStringAsFileAsync(SabatexSettings settings, string text, string linuxDestinationPath, string fileName)
     {
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+    
         await System.IO.File.WriteAllTextAsync($"{settings.TempFolder}/{fileName}", text);
-        linuxScriptShell.PutFile(settings.TempFolder, settings.Linux.TempProjectFolder, fileName);
+        linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, fileName);
         System.IO.File.Delete($"{settings.TempFolder}/{fileName}");
         if (!linuxScriptShell.Move($"{settings.TempFolder}/{fileName}", $"{settings.TempFolder}/{fileName}", true))
             throw new Exception($"Error move file {settings.TempFolder}/{fileName} to {settings.TempFolder}/{fileName}");
     }
 
-    static async Task PutStringAsFileAsync(IEnumerable<string> text, string linuxDestinationPath, string fileName)
+    static async Task PutStringAsFileAsync(SabatexSettings settings, IEnumerable<string> text, string linuxDestinationPath, string fileName)
     {
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+    
         await System.IO.File.WriteAllLinesAsync($"{settings.TempFolder}/{fileName}", text);
-        linuxScriptShell.PutFile(settings.TempFolder, settings.Linux.TempProjectFolder, fileName);
+        linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, fileName);
         System.IO.File.Delete($"{settings.TempFolder}/{fileName}");
-        if (!linuxScriptShell.Move($"{settings.Linux.TempProjectFolder}/{fileName}", $"{linuxDestinationPath}/{fileName}", true))
-            throw new Exception($"Error move file {{settings.Linux.TempProjectFolder}}/{{fileName to {linuxDestinationPath}/{fileName}");
+        if (!linuxScriptShell.Move($"{linux.TempProjectFolder}/{fileName}", $"{linuxDestinationPath}/{fileName}", true))
+            throw new Exception($"Error move file {linux.TempProjectFolder}/{fileName} to {linuxDestinationPath}/{fileName}");
     }
 
-    static void PutTolinux()
+    static void PutTolinux(SabatexSettings settings)
     {
-        var tarFileName = settings.Linux.TarFileName;
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var localScriptShell = new LocalScriptShell(settings.TempPublishProjectFolder);
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+        
+        var tarFileName = linux.TarFileName;
         var tarFilePath = $"{settings.TempFolder}/{tarFileName}";
         var projectName = settings.ProjectName;
         var tempFolder = settings.TempFolder;
-        if (string.IsNullOrWhiteSpace(settings.Linux.TempFolder))
-            throw new NullReferenceException(nameof(settings.Linux.TempFolder));
-        var linuxTempFolder = settings.Linux.TempFolder;
+        var linuxTempFolder = linux.TempFolder ?? throw new InvalidOperationException("Linux.TempFolder not configured");
 
         if (File.Exists(tarFilePath))
             File.Delete(tarFilePath);
 
-        // pack project
         if (!localScriptShell.Run($"tar -czvf {tarFileName} {projectName}", tempFolder))
             throw new Exception("Error pack !");
-        // create temp linux folder
         if (!linuxScriptShell.DirectoryExist(linuxTempFolder))
         {
             if (!linuxScriptShell.Mkdir(linuxTempFolder))
                 throw new Exception($"Error create folder {linuxTempFolder} !");
         }
-        // remove old folder  
-        if (linuxScriptShell.DirectoryExist(settings.Linux.TempProjectFolder))
+        if (linuxScriptShell.DirectoryExist(linux.TempProjectFolder))
         {
-            if (!linuxScriptShell.RemoveFolder(settings.Linux.TempProjectFolder))
-                throw new Exception($"Error delete {settings.Linux.TempProjectFolder}");
+            if (!linuxScriptShell.RemoveFolder(linux.TempProjectFolder))
+                throw new Exception($"Error delete {linux.TempProjectFolder}");
         }
 
         linuxScriptShell.PutFile(tempFolder, linuxTempFolder, tarFileName);
@@ -92,14 +104,15 @@ public class Program
         Directory.Delete($"{tempFolder}/{projectName}", true);
     }
 
-    static void UpdateBlazorwasm()
+    static void UpdateBlazorwasm(SabatexSettings settings)
     {
-        var publishFolder = settings.Linux.PublishFolder;
-        if (string.IsNullOrWhiteSpace(settings.Linux.TempProjectFolder))
-            throw new NullReferenceException(nameof(Linux.TempProjectFolder));
-        var tempProjectFolder = settings.Linux.TempProjectFolder;
-        var linuxScriptShell = new LinuxScriptShell(settings.TempPublishProjectFolder, settings.Linux.BitviseTlpFile);
-        // check web folder
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var publishFolder = linux.PublishFolder;
+        var tempProjectFolder = linux.TempProjectFolder ?? throw new InvalidOperationException("TempProjectFolder not configured");
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempPublishProjectFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+        
         if (!linuxScriptShell.DirectoryExist(publishFolder))
         {
             if (!linuxScriptShell.Mkdir(publishFolder, true))
@@ -107,51 +120,58 @@ public class Program
         }
         else
         {
-            // clean webfolder
             if (!linuxScriptShell.RemoveFolder(publishFolder, true))
-                Console.WriteLine($"Error clean {publishFolder}");
+                Logger.Warn($"Error clean {publishFolder}");
         }
 
-        // move content
         if (!linuxScriptShell.Move($"{tempProjectFolder}/wwwroot/*", publishFolder))
             throw new Exception($"Error move content !");
-        // set credential
         if (!linuxScriptShell.Chown("www-data", publishFolder))
         {
             throw new Exception($"Error set www-data:www-data !");
         }
     }
 
-    static async Task StopService()
+    static async Task StopService(SabatexSettings settings)
     {
-        Console.WriteLine($"Stop linux service {settings.Linux.ServiceName}");
-        if (string.IsNullOrWhiteSpace(settings.Linux.ServiceName))
-            throw new NullReferenceException(nameof(settings.Linux.ServiceName));
-        if (await linuxScriptShell.FileExistAsync($"/etc/systemd/system/{settings.Linux.ServiceName}.service"))
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+    
+        Logger.Info($"Stop linux service {linux.ServiceName}");
+        if (string.IsNullOrWhiteSpace(linux.ServiceName))
+            throw new NullReferenceException(nameof(linux.ServiceName));
+        if (await linuxScriptShell.FileExistAsync($"/etc/systemd/system/{linux.ServiceName}.service"))
         {
-            if (!(await linuxScriptShell.StopServiceAsync(settings.Linux.ServiceName)))
-                throw new Exception($"Do not stop service {settings.Linux.ServiceName}");
+            if (!(await linuxScriptShell.StopServiceAsync(linux.ServiceName)))
+                throw new Exception($"Do not stop service {linux.ServiceName}");
         }
     }
 
-    static async Task StartServiceAsync()
+    static async Task StartServiceAsync(SabatexSettings settings)
     {
-        if (string.IsNullOrWhiteSpace(settings.Linux.ServiceName))
-            throw new NullReferenceException(nameof(settings.Linux.ServiceName));
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+    
+        if (string.IsNullOrWhiteSpace(linux.ServiceName))
+            throw new NullReferenceException(nameof(linux.ServiceName));
 
-        var tempServiceFileName = $"{settings.TempFolder}/{settings.Linux.ServiceName}.service";
+        var tempServiceFileName = $"{settings.TempFolder}/{linux.ServiceName}.service";
 
-        if (!linuxScriptShell.FileExist($"/etc/systemd/system/{settings.Linux.ServiceName}.service"))
+        if (!linuxScriptShell.FileExist($"/etc/systemd/system/{linux.ServiceName}.service"))
         {
             var text = settings.GetServiceConfig();
             await File.WriteAllLinesAsync(tempServiceFileName, text);
-            linuxScriptShell.PutFile(settings.TempFolder, settings.Linux.TempProjectFolder, $"{settings.Linux.ServiceName}.service");
+            linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, $"{linux.ServiceName}.service");
             File.Delete(tempServiceFileName);
 
-            if (!linuxScriptShell.Move($"{settings.Linux.TempProjectFolder}/{settings.Linux.ServiceName}.service", $"/etc/systemd/system/{settings.Linux.ServiceName}.service", true))
-                throw new Exception($"Do not create service {settings.Linux.ServiceName}");
-            if (!linuxScriptShell.EnableService(settings.Linux.ServiceName))
-                throw new Exception($"Do not enable service {settings.Linux.ServiceName}");
+            if (!linuxScriptShell.Move($"{linux.TempProjectFolder}/{linux.ServiceName}.service", $"/etc/systemd/system/{linux.ServiceName}.service", true))
+                throw new Exception($"Do not create service {linux.ServiceName}");
+            if (!linuxScriptShell.EnableService(linux.ServiceName))
+                throw new Exception($"Do not enable service {linux.ServiceName}");
         }
         else
         {
@@ -159,34 +179,39 @@ public class Program
             {
                 var text = settings.GetServiceConfig();
                 await File.WriteAllLinesAsync(tempServiceFileName, text);
-                linuxScriptShell.PutFile(settings.TempFolder, settings.Linux.TempProjectFolder, $"{settings.Linux.ServiceName}.service");
+                linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, $"{linux.ServiceName}.service");
                 File.Delete(tempServiceFileName);
-                if (!linuxScriptShell.Move($"{settings.Linux.TempProjectFolder}/{settings.Linux.ServiceName}.service", $"/etc/systemd/system/{settings.Linux.ServiceName}.service", true))
-                    throw new Exception($"Do not move service {settings.Linux.ServiceName}");
+                if (!linuxScriptShell.Move($"{linux.TempProjectFolder}/{linux.ServiceName}.service", $"/etc/systemd/system/{linux.ServiceName}.service", true))
+                    throw new Exception($"Do not move service {linux.ServiceName}");
 
                 linuxScriptShell.DaemonReload();
             }
         }
 
-        if (!linuxScriptShell.StartService(settings.Linux.ServiceName))
-            throw new Exception($"Do not start service {settings.Linux.ServiceName}");
+        if (!linuxScriptShell.StartService(linux.ServiceName))
+            throw new Exception($"Do not start service {linux.ServiceName}");
     }
 
-    static async Task<bool> MigrateAsync()
+    static async Task<bool> MigrateAsync(SabatexSettings settings)
     {
-        if (!linuxScriptShell.DirectoryExist(settings.Linux.PublishFolder))
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+    
+        if (!linuxScriptShell.DirectoryExist(linux.PublishFolder))
         {
-            throw new Exception($"Do not exist directory {settings.Linux.PublishFolder}");
+            throw new Exception($"Do not exist directory {linux.PublishFolder}");
         }
 
-        var configFileName = $"/etc/sabatex/{settings.Linux.ServiceName}";
-        var tempConfigFileName = $"{settings.TempFolder}/{settings.Linux.ServiceName}";
+        var configFileName = $"/etc/sabatex/{linux.ServiceName}";
+        var tempConfigFileName = $"{settings.TempFolder}/{linux.ServiceName}";
 
         if (!linuxScriptShell.FileExist(configFileName))
         {
             var text = settings.GetConfig();
             await File.WriteAllTextAsync(tempConfigFileName, text);
-            linuxScriptShell.PutFile(settings.TempFolder, settings.Linux.TempProjectFolder, settings.Linux.ServiceName);
+            linuxScriptShell.PutFile(settings.TempFolder, linux.TempProjectFolder, linux.ServiceName);
             File.Delete(tempConfigFileName);
             if (!linuxScriptShell.DirectoryExist("/etc/sabatex"))
             {
@@ -194,18 +219,23 @@ public class Program
                     throw new Exception("Error create folder /etc/sabatex");
             }
 
-            linuxScriptShell.Move($"{settings.Linux.TempProjectFolder}/{settings.Linux.ServiceName}", $"/etc/sabatex/{settings.Linux.ServiceName}", true);
+            linuxScriptShell.Move($"{linux.TempProjectFolder}/{linux.ServiceName}", $"/etc/sabatex/{linux.ServiceName}", true);
         }
 
-        if (!linuxScriptShell.DotnetRun(settings.Linux.PublishFolder, $"{settings.ProjectName}.dll", "--migrate", true))
+        if (!linuxScriptShell.DotnetRun(linux.PublishFolder, $"{settings.ProjectName}.dll", "--migrate", true))
         {
-            throw new Exception($"Error run project {settings.Linux.PublishFolder}");
+            throw new Exception($"Error run project {linux.PublishFolder}");
         }
         return true;
     }
 
-    static async Task<bool> UpdateNginx()
+    static async Task<bool> UpdateNginx(SabatexSettings settings)
     {
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+        
         if (!linuxScriptShell.FileExist("/etc/nginx/sites-available/default"))
         {
             if (!linuxScriptShell.sexec("sudo apt update"))
@@ -214,17 +244,18 @@ public class Program
                 return await Error("Do not install nginx");
         }
 
-        var configFileName = $"/etc/nginx/sites-available/{settings.Linux.ServiceName}";
-        var tempConfigFileName = $"{settings.TempFolder}/{settings.Linux.ServiceName}";
+        var configFileName = $"/etc/nginx/sites-available/{linux.ServiceName}";
+        var tempConfigFileName = $"{settings.TempFolder}/{linux.ServiceName}";
         bool change = false;
         string backup = string.Empty;
-        if (!linuxScriptShell.FileExist(configFileName) || !linuxScriptShell.FileExist($"/etc/nginx/sites-enabled/{settings.Linux.ServiceName}"))
+        
+        if (!linuxScriptShell.FileExist(configFileName) || !linuxScriptShell.FileExist($"/etc/nginx/sites-enabled/{linux.ServiceName}"))
         {
-            await PutStringAsFileAsync(settings.GetNginxConfig(), "/etc/nginx/sites-available", settings.Linux.ServiceName);
-            if (!linuxScriptShell.CreateSymlink(configFileName, $"/etc/nginx/sites-enabled/{settings.Linux.ServiceName}", true))
-                return await Error($"Error create symlink /etc/nginx/sites-enabled/{settings.Linux.ServiceName}");
-            if (!linuxScriptShell.CreateSSLCertificate(settings.ProjectName, settings.Linux.NGINX.HostNames, "192.168.1.1"))
-                return await Error($"Error create SSL certificate for {settings.Linux.ServiceName}");
+            await PutStringAsFileAsync(settings, settings.GetNginxConfig(), "/etc/nginx/sites-available", linux.ServiceName);
+            if (!linuxScriptShell.CreateSymlink(configFileName, $"/etc/nginx/sites-enabled/{linux.ServiceName}", true))
+                return await Error($"Error create symlink /etc/nginx/sites-enabled/{linux.ServiceName}");
+            if (!linuxScriptShell.CreateSSLCertificate(settings.ProjectName, linux.NGINX.HostNames, "192.168.1.1"))
+                return await Error($"Error create SSL certificate for {linux.ServiceName}");
 
             change = true;
         }
@@ -233,7 +264,7 @@ public class Program
             backup = $"{configFileName}-{DateTime.Now.ToString().Replace(':', '-').Replace('.', '-').Replace(' ', '-')}$";
             if (!linuxScriptShell.Copy(configFileName, backup, true))
                 return await Error($"Error copy file {configFileName}");
-            await PutStringAsFileAsync(settings.GetNginxConfig(), "/etc/nginx/sites-available", settings.Linux.ServiceName);
+            await PutStringAsFileAsync(settings, settings.GetNginxConfig(), "/etc/nginx/sites-available", settings.Linux.ServiceName);
             change = true;
         }
 
@@ -256,21 +287,22 @@ public class Program
         return true;
     }
 
-    static async Task<bool> UpdateBackendAsync()
+    static async Task<bool> UpdateBackendAsync(SabatexSettings settings)
     {
-        var serviceName = settings.Linux.ServiceName;
-        var publishFolder = settings.Linux.PublishFolder;
-        if (string.IsNullOrWhiteSpace(settings.Linux.TempProjectFolder))
-            throw new NullReferenceException(nameof(settings.Linux.TempProjectFolder));
-        var tempProjectFolder = settings.Linux.TempProjectFolder;
-        if (settings.Linux.FrontEnd)
+        var linux = settings.Linux ?? throw new InvalidOperationException("Linux configuration not initialized");
+        var linuxScriptShell = new LinuxScriptShell(
+            settings.TempFolder, 
+            linux.BitviseTlpFile ?? throw new InvalidOperationException("BitviseTlpFile not configured"));
+    
+        var serviceName = linux.ServiceName;
+        var publishFolder = linux.PublishFolder;
+        var tempProjectFolder = linux.TempProjectFolder ?? throw new InvalidOperationException("TempProjectFolder not configured");
+        
+        if (linux.FrontEnd)
             throw new Exception("Try update backend for frontend project");
 
-        // stop service and create service file if not exist
-        StopService();
+        await StopService(settings);
 
-        // move project
-        // check web folder
         if (!linuxScriptShell.DirectoryExist(publishFolder))
         {
             if (!linuxScriptShell.Mkdir(publishFolder, true))
@@ -278,20 +310,16 @@ public class Program
         }
         else
         {
-            // backup old version
-            if (!linuxScriptShell.Tar(settings.Linux.TarFileName, publishFolder, true))
-                Console.WriteLine($"Error create archive {publishFolder}");
-            if (!linuxScriptShell.Move(settings.Linux.TarFileName, $"{settings.Linux.TarFileName}{DateTime.Now.ToString("yyyy-MM-dd")}.tar.gz", true))
-                Console.WriteLine($"Error move {publishFolder}");
-            // clean webfolder
+            if (!linuxScriptShell.Tar(linux.TarFileName, publishFolder, true))
+                Logger.Warn($"Error create archive {publishFolder}");
+            if (!linuxScriptShell.Move(linux.TarFileName, $"{linux.TarFileName}{DateTime.Now.ToString("yyyy-MM-dd")}.tar.gz", true))
+                Logger.Warn($"Error move {publishFolder}");
             if (!linuxScriptShell.RemoveFolder($"{publishFolder}/*", true))
-                Console.WriteLine($"Error clean {publishFolder}");
+                Logger.Warn($"Error clean {publishFolder}");
         }
 
-        // move content
         if (!linuxScriptShell.Move($"{tempProjectFolder}/*", publishFolder, true))
             throw new Exception($"Error move content !");
-        // set credential
         if (!linuxScriptShell.Chown("www-data", publishFolder, true))
         {
             throw new Exception($"Error set www-data:www-data !");
@@ -299,14 +327,14 @@ public class Program
 
         if (settings.Migrate)
         {
-            await MigrateAsync();
+            await MigrateAsync(settings);
         }
 
-        if (!await UpdateNginx())
+        if (!await UpdateNginx(settings))
             return await Error("Error update nginx");
 
-        Console.WriteLine($"Start linux service {serviceName}");
-        await StartServiceAsync();
+        Logger.Info($"Start linux service {serviceName}");
+        await StartServiceAsync(settings);
         return true;
     }
 
@@ -332,21 +360,21 @@ public class Program
     /// <returns>Exit code (0 = success)</returns>
     public static async Task<int> PublishProjectAsync(SabatexSettings projectSettings)
     {
-        // set global settings for use in static methods
-        settings = projectSettings;
+        var settings = projectSettings;
 
         try
         {
             if (settings.IsLibrary)
             {
-                // publish library to NuGet
+                var localScriptShell = new LocalScriptShell(settings.TempPublishProjectFolder);
+                
                 string nugetAuthToken = settings.NUGET.GetToken();
                 if (Directory.Exists(settings.OutputPath))
                 {
                     string packagesPath = $"{settings.OutputPath}\\*.nupkg";
                     localScriptShell.Delete(packagesPath);
                 }
-                await PackNugetAsync();
+                await PackNugetAsync(settings);
 
                 string symbols = settings.IsPreRelease ? ".symbols" : string.Empty;
 
@@ -367,13 +395,12 @@ public class Program
             }
             else
             {
-                // publish application to Linux
-                Build();
-                PutTolinux();
+                Build(settings);
+                PutTolinux(settings);
                 if (!settings.Linux.FrontEnd)
-                    await UpdateBackendAsync();
+                    await UpdateBackendAsync(settings);
                 else
-                    UpdateBlazorwasm();
+                    UpdateBlazorwasm(settings);
             }
 
             Logger.Info("Done!");
@@ -388,26 +415,88 @@ public class Program
 
     static async Task<int> Main(string[] args)
     {
-        settings = new SabatexSettings();
-        var result = await CommandProcessor.Process(args, settings);
-        if (result.shouldExit)
+        var (exitCode, shouldExit, folderPath, projFile,  migrate, updateService, updateNginx) 
+            = await CommandProcessor.Process(args);
+        
+        if (shouldExit)
         {
-            return result.exitCode;
+            return exitCode;
         }
 
-        if (!File.Exists(settings.ProjFile))
+
+        if (folderPath != null && projFile != null) 
         {
-            Console.WriteLine("The file not exist: " + settings.ProjFile);
-            Environment.Exit(1);
+            Logger.Error("Cannot use both --folder and --csproj options together.");
+            return 1;
         }
 
-        var errorCode = settings.ResolveConfig();
-        if (errorCode != 0)
+        var projects = new List<string>();
+
+        if (projFile != null)
         {
-            return errorCode;
+            projects.Add(projFile);
+        }
+        else
+        {
+            var directory = folderPath ?? Directory.GetCurrentDirectory();
+
+            var configPath = Path.Combine(directory, "sabatex-publish-solution.json");
+
+            if (File.Exists(configPath))
+            {
+                Logger.Info("Batch publishing configuration found in the folder.");
+                var json = File.ReadAllText(configPath);
+                var config = JsonSerializer.Deserialize<SolutionPublishConfig>(json)
+                    ?? throw new Exception("Failed to parse solution config");
+                foreach (var item in config.Projects)
+                {
+                    if (item.Enabled)
+                    {
+                        var projectPath = Path.Combine(directory, item.Path);
+                        projects.Add(projectPath);
+  
+                    }
+                }
+
+            }
+            else
+            {
+                var csprojFiles = Directory.GetFiles(directory, "*.csproj");
+                if (csprojFiles.Length == 0)
+                {
+                    Logger.Error("No .csproj files found in the specified folder.");
+                    return 2;
+                }
+                else if (csprojFiles.Length > 1)
+                {
+                    Logger.Error("Multiple .csproj files found. Please specify one using --csproj option.");
+                    return 2;
+                }
+                else
+                {
+                    projects.Add(csprojFiles[0]);
+                }
+            }
+
         }
 
-        // call extracted publishing logic
-        return await PublishProjectAsync(settings);
+   
+        foreach (var project in projects)
+        {
+            Logger.Info($"Publishing project: {project}");
+            var settings = new SabatexSettings() { ProjFile = project ,Migrate = migrate, UpdateService = updateService, UpdateNginx = updateNginx};
+
+            var errorCode = settings.ResolveConfig();
+            if (errorCode != 0)
+            {
+                return errorCode;
+            }
+            var result = await PublishProjectAsync(settings);
+            if (result != 0)
+            {
+                return result;
+            }
+        }
+        return 0;
     }
 }
