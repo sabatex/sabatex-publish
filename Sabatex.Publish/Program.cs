@@ -464,7 +464,7 @@ public class Program
         foreach (var project in projects)
         {
             Logger.Info($"Publishing project: {project}");
-            var settings = new SabatexSettings() { ProjFile = project ,Migrate = migrate, UpdateService = updateService, UpdateNginx = updateNginx, GlobalVersion = globalVersion};
+            var settings = new SabatexSettings() { ProjFile = project ,Migrate = migrate, UpdateService = updateService, UpdateNginx = updateNginx};
 
             var errorCode = settings.ResolveConfig();
             if (errorCode != 0)

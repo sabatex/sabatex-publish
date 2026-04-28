@@ -13,7 +13,7 @@ namespace Sabatex.Publish;
 public class SabatexSettings : AppConfig
 {
     const string configFileName = "appsettings.json";
-    
+
     private string _version = string.Empty;  // FIXED: initialized
 
     public string? ProjFile { get; set; }
@@ -50,7 +50,6 @@ public class SabatexSettings : AppConfig
     
     public string Version => _version;
 
-    public string? GlobalVersion { get; set; }
     public string TempPublishProjectFolder { get; private set; } = string.Empty;  // FIXED: initialized
     public bool IsPreRelease { get; private set; }
     public string OutputPath { get; private set; } = string.Empty;  // FIXED: initialized
@@ -99,83 +98,47 @@ public class SabatexSettings : AppConfig
         xml.Load(ProjFile);
         var versionNode = xml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
 
-        //# If version is empty or missing, check for SetVersionFrom* target
+        //# If version is empty or missing, search Directory.Build.props up the directory tree
         if (string.IsNullOrWhiteSpace(versionNode))
         {
-            //# Look for MSBuild Target with Name starting with "SetVersionFrom"
-            var setVersionTarget = xml.SelectSingleNode("//Target[starts-with(@Name, 'SetVersionFrom')]");
-            
-            if (setVersionTarget != null)
+            var searchFolder = ProjectFolder;
+            while (!string.IsNullOrWhiteSpace(searchFolder))
             {
-                var targetName = setVersionTarget.Attributes?["Name"]?.Value;
-                Logger.Info($"Found dynamic version target: {targetName}");
-                
-                //# Read version from first ProjectReference
-                var firstProjectRef = xml.SelectSingleNode("//ProjectReference");
-                if (firstProjectRef != null)
+                var dirBuildPropsPath = Path.Combine(searchFolder, "Directory.Build.props");
+                if (File.Exists(dirBuildPropsPath))
                 {
-                    var refPath = firstProjectRef.Attributes?["Include"]?.Value;
-                    if (!string.IsNullOrWhiteSpace(refPath))
+                    var propsXml = new System.Xml.XmlDocument();
+                    propsXml.Load(dirBuildPropsPath);
+                    versionNode = propsXml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
+                    if (!string.IsNullOrWhiteSpace(versionNode))
                     {
-                        var fullRefPath = Path.Combine(ProjectFolder, refPath);
-                        if (File.Exists(fullRefPath))
-                        {
-                            try
-                            {
-                                var refXml = new System.Xml.XmlDocument();
-                                refXml.Load(fullRefPath);
-                                versionNode = refXml.SelectSingleNode("Project/PropertyGroup/Version")?.InnerText;
-                                
-                                if (!string.IsNullOrWhiteSpace(versionNode))
-                                {
-                                    Logger.Info($"Version inherited from '{Path.GetFileName(refPath)}': {versionNode}");
-                                }
-                                else
-                                {
-                                    Logger.Error($"Referenced project '{refPath}' does not have <Version> element.");
-                                    return 6;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Error($"Error reading version from '{refPath}': {ex.Message}");
-                                return 6;
-                            }
-                        }
-                        else
-                        {
-                            Logger.Error($"Referenced project file not found: {fullRefPath}");
-                            return 6;
-                        }
-                    }
-                    else
-                    {
-                        Logger.Error("ProjectReference found but Include attribute is empty");
-                        return 6;
+                        Logger.Info($"Version inherited from Directory.Build.props at '{searchFolder}': {versionNode}");
+                        break;
                     }
                 }
-                else
-                {
-                    Logger.Error($"Found '{targetName}' target but no ProjectReference elements.");
-                    return 6;
-                }
-            }
-            else
-            {
-                Logger.Error($"The project {Path.GetFileName(ProjFile)} does not have <Version> element.");
-                Logger.Info("Fix: Add <Version>1.0.0</Version> or create <Target Name=\"SetVersionFrom...\"> with ProjectReference.");
-                return 6;
+                //# Move up to parent directory
+                var parentFolder = Path.GetDirectoryName(searchFolder);
+                if (parentFolder == searchFolder)
+                    break; //# Reached root - stop
+                searchFolder = parentFolder;
             }
         }
+
+
 
         //# Final validation
         if (string.IsNullOrWhiteSpace(versionNode))
         {
-            Logger.Error($"Failed to resolve version for {Path.GetFileName(ProjFile)}");
+            Logger.Error($"The project {Path.GetFileName(ProjFile)} does not have <Version> element.");
+            Logger.Info("Fix: Add <Version>1.0.0</Version> to .csproj or to Directory.Build.props in solution root.");
             return 6;
         }
 
-        _version = versionNode == null ? GlobalVersion ?? "1.0.0" : versionNode;
+        _version = versionNode;
+
+
+
+        
         
         var ver = new Version(_version);
         IsPreRelease = ver.IsPreRelease;
