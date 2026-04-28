@@ -50,6 +50,7 @@ public class SabatexSettings : AppConfig
     
     public string Version => _version;
 
+    public string? GlobalVersion { get; set; }
     public string TempPublishProjectFolder { get; private set; } = string.Empty;  // FIXED: initialized
     public bool IsPreRelease { get; private set; }
     public string OutputPath { get; private set; } = string.Empty;  // FIXED: initialized
@@ -174,7 +175,7 @@ public class SabatexSettings : AppConfig
             return 6;
         }
 
-        _version = versionNode;
+        _version = versionNode == null ? GlobalVersion ?? "1.0.0" : versionNode;
         
         var ver = new Version(_version);
         IsPreRelease = ver.IsPreRelease;

@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace sabatex_publish;
 
@@ -7,6 +7,11 @@ namespace sabatex_publish;
 /// </summary>
 public class SolutionPublishConfig
 {
+    /// <summary>
+    /// Gets or sets the version of the project or component.
+    /// </summary>
+    public string? Version { get; set; }
+
     /// <summary>
     /// List of projects to publish
     /// </summary>

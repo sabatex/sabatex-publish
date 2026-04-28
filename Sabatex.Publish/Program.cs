@@ -394,7 +394,8 @@ public class Program
     {
         var (exitCode, shouldExit, folderPath, projFile,  migrate, updateService, updateNginx) 
             = await CommandProcessor.Process(args);
-        
+        string? globalVersion = null;
+
         if (shouldExit)
         {
             return exitCode;
@@ -425,6 +426,8 @@ public class Program
                 var json = File.ReadAllText(configPath);
                 var config = JsonSerializer.Deserialize<SolutionPublishConfig>(json)
                     ?? throw new Exception("Failed to parse solution config");
+                globalVersion = config.Version;
+
                 foreach (var item in config.Projects)
                 {
                     if (item.Enabled)
@@ -461,7 +464,7 @@ public class Program
         foreach (var project in projects)
         {
             Logger.Info($"Publishing project: {project}");
-            var settings = new SabatexSettings() { ProjFile = project ,Migrate = migrate, UpdateService = updateService, UpdateNginx = updateNginx};
+            var settings = new SabatexSettings() { ProjFile = project ,Migrate = migrate, UpdateService = updateService, UpdateNginx = updateNginx, GlobalVersion = globalVersion};
 
             var errorCode = settings.ResolveConfig();
             if (errorCode != 0)
