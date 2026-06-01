@@ -2,7 +2,7 @@
   "profiles": {
     "sabatex-publish": {
       "commandName": "Project",
-      "commandLineArgs": "-d C:\\Users\\serhi\\repos\\sabatex\\SabatexBlazor\\Sabatex.RadzenBlazor.Server"
+      "commandLineArgs": "-d C:\\Users\\serhi\\source\\repos\\sabatex\\SabatexBlazor\\"
     }
   }
 }
