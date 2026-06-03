@@ -351,15 +351,13 @@ public class Program
                 await PackNugetAsync(settings);
 
                 string symbols = settings.IsPreRelease ? ".symbols" : string.Empty;
-
-                if (settings.IsPreRelease)
+                
+                if (!await localScriptShell.RunAsync($"nuget add \"{settings.OutputPath}\\{settings.ProjectName}.{settings.Version}{symbols}.nupkg\" -source {settings.NUGET.GetLocalStorage()}"))
                 {
-                    if (!await localScriptShell.RunAsync($"nuget add \"{settings.OutputPath}\\{settings.ProjectName}.{settings.Version}.symbols.nupkg\" -source {settings.NUGET.GetLocalStorage()}"))
-                    {
-                        throw new Exception("Error publish to nuget!");
-                    }
+                    throw new Exception("Error publish to nuget!");
                 }
-                else
+
+                if (!settings.IsPreRelease)
                 {
                     if (!await localScriptShell.RunAsync($"dotnet nuget push \"{settings.OutputPath}\\*{symbols}.nupkg\" -k {nugetAuthToken} -s https://api.nuget.org/v3/index.json --skip-duplicate"))
                     {
